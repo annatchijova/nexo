@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NEXO — arquitectura por capas",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "case-to-action", "label": "De caso a acción", "focus": ["person", "web", "api", "domain", "policy", "postgres"], "note": "Una acción visible sólo surge del evaluador puro, con soporte fáctico y jurídico." },
+      { "id": "integrity", "label": "Integridad verificable", "focus": ["api", "integrity", "objects", "verifier"], "note": "Artefactos, manifests, exports y eventos sellables conservan protocolos separados." },
+      { "id": "narration-boundary", "label": "Límite del narrador", "focus": ["web", "api", "domain"], "note": "La API media una proyección autorizada para el LLM; el núcleo no llama servicios externos." }
+    ]
+  },
+  "components": [
+    { "id": "person", "type": "external", "label": "Persona afectada", "pos": [40, 320], "size": [170, 64] },
+    { "id": "web", "type": "frontend", "label": "NEXO Web", "pos": [245, 320], "size": [160, 64] },
+    { "id": "api", "type": "backend", "label": "NEXO API", "pos": [475, 320], "size": [170, 64] },
+    { "id": "domain", "type": "backend", "label": "Núcleo de dominio", "pos": [710, 320], "size": [180, 64], "tag": "puro y determinista" },
+    { "id": "policy", "type": "backend", "label": "Motor de política", "pos": [710, 145], "size": [180, 64], "tag": "Argentina + Estados Unidos" },
+    { "id": "integrity", "type": "security", "label": "Protocolo de integridad", "pos": [710, 500], "size": [180, 64] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "pos": [965, 285], "size": [180, 64] },
+    { "id": "objects", "type": "cloud", "label": "Object store", "pos": [965, 500], "size": [180, 64] },
+    { "id": "verifier", "type": "security", "label": "Verificador independiente", "pos": [1210, 500], "size": [180, 64] },
+    { "id": "sources", "type": "external", "label": "Fuentes oficiales", "pos": [475, 110], "size": [170, 64] }
+  ],
+  "connections": [
+    { "id": "person-web", "from": "person", "to": "web", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "web-api", "from": "web", "to": "api", "label": "API HTTPS", "variant": "emphasis" },
+    { "id": "api-domain", "from": "api", "to": "domain", "label": "caso y comandos", "labelAt": [678, 398] },
+    { "id": "domain-policy", "from": "domain", "to": "policy", "label": "evalúa soporte", "fromSide": "top", "toSide": "bottom", "labelAt": [875, 225] },
+    { "id": "sources-policy", "from": "sources", "to": "policy", "label": "bundle citado", "variant": "security", "labelAt": [678, 230] },
+    { "id": "domain-postgres", "from": "domain", "to": "postgres", "label": "grafo persistido", "labelAt": [928, 398] },
+    { "id": "domain-integrity", "from": "domain", "to": "integrity", "label": "objetos sellables", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelAt": [800, 580] },
+    { "id": "integrity-objects", "from": "integrity", "to": "objects", "label": "artefactos y manifest", "variant": "security", "labelAt": [928, 578] },
+    { "id": "objects-verifier", "from": "objects", "to": "verifier", "label": "export verificable", "variant": "security", "labelAt": [1178, 578] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Autoridad", "items": ["El núcleo valida el grafo; no confía en texto generado.", "El motor de política decide soporte desde fuentes versionadas."] },
+    { "dot": "emerald", "title": "Invariantes", "items": ["Sin soporte fáctico y jurídico, una acción no puede ser AVAILABLE.", "Una inferencia no eleva sola una acción a SUPPORTED."] },
+    { "dot": "violet", "title": "Lenguaje", "items": ["Rust contiene dominio, política, integridad y verificador.", "TypeScript queda deliberadamente en la superficie UX."] }
+  ]
+}

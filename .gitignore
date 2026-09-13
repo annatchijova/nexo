@@ -1,0 +1,11 @@
+/target/
+/web/node_modules/
+/web/.next/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.sqlite
+*.sqlite3
+coverage/

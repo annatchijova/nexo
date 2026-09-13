@@ -2,9 +2,9 @@
 
 ## Red Team Round 3
 
-**Date:** 2026-09-13  
-**Method:** Abductive Engineering (A–D–I) + Red-Team Auditing  
-**Base under test:** `main @ 01cce06ee761aefe4bc8e48903d1f39348be74f9`  
+**Date:** 2026-09-13
+**Method:** Abductive Engineering (A–D–I) + Red-Team Auditing
+**Base under test:** `main @ 01cce06ee761aefe4bc8e48903d1f39348be74f9`
 **Scope:** `nexo-core` evaluation values and constructors only. No persistence,
 policy parser, graph resolver, HTTP adapter, cryptography, or sandbox worker
 exists in scope yet.
@@ -35,8 +35,8 @@ exists in scope yet.
 ## RT-004 — Proof-role wrappers permitted self-attestation
 
 **Severity:** Medium for epistemic integrity; no external exploit path exists
-until an adapter accepts attacker-controlled references.  
-**Epistemic level:** CONFIRMED BY INDUCTION.  
+until an adapter accepts attacker-controlled references.
+**Epistemic level:** CONFIRMED BY INDUCTION.
 **Bucket:** Architectural invariant.
 
 ### Surprise / expectation violated
@@ -104,8 +104,8 @@ requires the future graph resolver and policy layer.
 ## RT-005 — A singleton citation could manufacture legal conflict
 
 **Severity:** Medium for epistemic integrity; no external exploit path exists
-until an adapter or policy evaluator accepts attacker-controlled references.  
-**Epistemic level:** CONFIRMED BY INDUCTION.  
+until an adapter or policy evaluator accepts attacker-controlled references.
+**Epistemic level:** CONFIRMED BY INDUCTION.
 **Bucket:** Architectural invariant.
 
 ### Surprise / expectation violated
@@ -158,8 +158,8 @@ is explicitly deferred to the policy evaluator.
 
 ## RT-006 — External caller bypasses private payload constructors
 
-**Severity:** None.  
-**Epistemic level:** FALSIFIED.  
+**Severity:** None.
+**Epistemic level:** FALSIFIED.
 **Bucket:** Constructor-bypass vector.
 
 ### Hypothesis and deduction

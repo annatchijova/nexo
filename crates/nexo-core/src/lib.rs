@@ -206,14 +206,19 @@ pub struct OutOfJurisdiction {
 }
 
 impl OutOfJurisdiction {
-    pub const fn new(
+    /// The scope evidence must be a distinct graph node from the bundle whose
+    /// scope it constrains; otherwise the bundle would certify itself.
+    pub fn try_new(
         jurisdiction_evidence: JurisdictionEvidenceId,
         policy_bundle: PolicyBundleId,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, EvaluationError> {
+        if jurisdiction_evidence.0 == policy_bundle.0 {
+            return Err(EvaluationError::JurisdictionEvidenceAliasesPolicyBundle);
+        }
+        Ok(Self {
             jurisdiction_evidence,
             policy_bundle,
-        }
+        })
     }
 
     pub const fn jurisdiction_evidence(&self) -> JurisdictionEvidenceId {
@@ -234,14 +239,19 @@ pub struct PolicyNotCurrent {
 }
 
 impl PolicyNotCurrent {
-    pub const fn new(
+    /// Freshness evidence must be independent from the bundle it evaluates;
+    /// otherwise a bundle could be represented as validating itself.
+    pub fn try_new(
         policy_bundle: PolicyBundleId,
         freshness_evidence: PolicyFreshnessEvidenceId,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, EvaluationError> {
+        if policy_bundle.0 == freshness_evidence.0 {
+            return Err(EvaluationError::FreshnessEvidenceAliasesPolicyBundle);
+        }
+        Ok(Self {
             policy_bundle,
             freshness_evidence,
-        }
+        })
     }
 
     pub const fn policy_bundle(&self) -> PolicyBundleId {
@@ -264,6 +274,14 @@ pub enum Abstention {
 
 /// The system has case context but no primary, authoritative legal source for
 /// the question asked.
+///
+/// ```compile_fail
+/// use nexo_core::NoAuthoritativeLegalSource;
+///
+/// let _ = NoAuthoritativeLegalSource {
+///     factual_context: Vec::new(),
+/// };
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NoAuthoritativeLegalSource {
     factual_context: Vec<FactualSupport>,
@@ -341,8 +359,11 @@ impl ConflictingLegalClaims {
         if conflicting_claims.len() > MAX_LEGAL_SUPPORT {
             return Err(EvaluationError::TooManyLegalContext);
         }
-        if conflicting_claims.is_empty() {
-            return Err(EvaluationError::MissingConflictingLegalClaim);
+        if conflicting_claims.len() < 2 {
+            return Err(EvaluationError::InsufficientConflictingLegalClaims);
+        }
+        if has_duplicate(&conflicting_claims) {
+            return Err(EvaluationError::DuplicateConflictingLegalClaim);
         }
         Ok(Self {
             factual_context,
@@ -369,16 +390,26 @@ fn validate_factual_context(factual_context: &[FactualSupport]) -> Result<(), Ev
     Ok(())
 }
 
+fn has_duplicate<T: PartialEq>(values: &[T]) -> bool {
+    values
+        .iter()
+        .enumerate()
+        .any(|(index, value)| values[index + 1..].contains(value))
+}
+
 /// Why a non-actionable evaluation payload could not be constructed safely.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EvaluationError {
     MissingFactualContext,
     MissingLegalContext,
     MissingRequirement,
-    MissingConflictingLegalClaim,
+    InsufficientConflictingLegalClaims,
+    DuplicateConflictingLegalClaim,
     TooManyFactualContext,
     TooManyLegalContext,
     TooManyMissingRequirements,
+    JurisdictionEvidenceAliasesPolicyBundle,
+    FreshnessEvidenceAliasesPolicyBundle,
 }
 
 /// Why an action could not be constructed as a valid graph value.

@@ -33,12 +33,12 @@ The architecture diagram is available in [`docs/architecture/nexo-architecture.h
 flowchart LR
     person["Affected person<br/><small>Persona afectada</small>"] -->|"HTTPS"| web["NEXO Web"]
     web -->|"API HTTPS"| api["NEXO API"]
-    api -->|"case &amp; commands<br/><small>caso y comandos</small>"| domain["Domain core<br/><small>Núcleo de dominio</small><br/><i>pure and deterministic</i>"]
+    api -->|"case & commands<br/><small>caso y comandos</small>"| domain["Domain core<br/><small>Núcleo de dominio</small><br/><i>pure and deterministic</i>"]
     sources["Official sources<br/><small>Fuentes oficiales</small>"] -->|"cited bundle<br/><small>bundle citado</small>"| policy["Policy engine<br/><small>Motor de política</small>"]
     domain -->|"evaluates support<br/><small>evalúa soporte</small>"| policy
     domain -->|"persisted graph<br/><small>grafo persistido</small>"| postgres[("PostgreSQL")]
     domain -->|"sealable objects<br/><small>objetos sellables</small>"| integrity["Integrity protocol<br/><small>Protocolo de integridad</small>"]
-    integrity -->|"artifacts &amp; manifest<br/><small>artefactos y manifest</small>"| objects["Object store"]
+    integrity -->|"artifacts & manifest<br/><small>artefactos y manifest</small>"| objects["Object store"]
     objects -->|"verifiable export<br/><small>export verificable</small>"| verifier["Independent verifier<br/><small>Verificador independiente</small>"]
 ```
 

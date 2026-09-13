@@ -6,6 +6,13 @@
 
 use core::num::NonZeroU64;
 
+/// Maximum references retained in each support collection for one action.
+/// A future adapter must enforce lower byte/body limits before allocating its
+/// decoded input; these limits bound retained domain state.
+pub const MAX_FACTUAL_SUPPORT: usize = 64;
+pub const MAX_LEGAL_SUPPORT: usize = 64;
+pub const MAX_UNMET_REQUIREMENTS: usize = 64;
+
 /// An opaque reference to a durable node in a case graph.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NodeId(NonZeroU64);
@@ -66,6 +73,9 @@ pub enum ActionOptionError {
     MissingFactualSupport,
     MissingLegalSupport,
     SupportedWithUnmetRequirements,
+    TooManyFactualSupport,
+    TooManyLegalSupport,
+    TooManyUnmetRequirements,
 }
 
 /// An action accompanied by the support required to explain it.
@@ -93,6 +103,15 @@ impl ActionOption {
         legal_support: Vec<NormativeClaimId>,
         unmet_requirements: Vec<RequirementId>,
     ) -> Result<Self, ActionOptionError> {
+        if factual_support.len() > MAX_FACTUAL_SUPPORT {
+            return Err(ActionOptionError::TooManyFactualSupport);
+        }
+        if legal_support.len() > MAX_LEGAL_SUPPORT {
+            return Err(ActionOptionError::TooManyLegalSupport);
+        }
+        if unmet_requirements.len() > MAX_UNMET_REQUIREMENTS {
+            return Err(ActionOptionError::TooManyUnmetRequirements);
+        }
         if factual_support.is_empty() {
             return Err(ActionOptionError::MissingFactualSupport);
         }

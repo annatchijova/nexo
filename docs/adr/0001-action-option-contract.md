@@ -23,6 +23,10 @@ support and legal support. `Inference` is not a `FactualSupport` variant. The
 status is a closed Rust enum, and `is_available()` is true only for a valid,
 complete `SUPPORTED` value.
 
+The first red-team pass added a 64-reference cap independently to factual
+support, legal support, and unmet requirements. This bounds retained domain
+state; boundary decoders must still reject oversized bodies before allocation.
+
 ## Rejected alternatives
 
 - A UI-only check: bypassable by every other consumer and invisible to the

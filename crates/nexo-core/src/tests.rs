@@ -152,3 +152,52 @@ fn rejects_unmet_requirements_above_the_domain_limit() {
         crate::ActionOptionError::TooManyUnmetRequirements
     );
 }
+
+/// Red-team counterexample: a factual case may honestly abstain because no
+/// authoritative legal source has been selected. The current ActionOption
+/// constructor rejects it, proving this status cannot always mean an option.
+#[test]
+fn current_action_option_rejects_abstention_without_legal_support() {
+    let result = ActionOption::try_new(ActionStatus::Abstain, vec![factual(1)], vec![], vec![]);
+
+    assert_eq!(
+        result.unwrap_err(),
+        crate::ActionOptionError::MissingLegalSupport
+    );
+}
+
+/// Red-team counterexample: policy freshness is knowable from a policy bundle
+/// before any case evidence exists. The current constructor rejects that
+/// evaluation result because it requires factual support.
+#[test]
+fn current_action_option_rejects_policy_not_current_without_factual_support() {
+    let result = ActionOption::try_new(
+        ActionStatus::PolicyNotCurrent,
+        vec![],
+        vec![legal(2)],
+        vec![],
+    );
+
+    assert_eq!(
+        result.unwrap_err(),
+        crate::ActionOptionError::MissingFactualSupport
+    );
+}
+
+/// Red-team counterexample: a jurisdiction-scope determination can be made
+/// from selected jurisdiction metadata and a policy bundle scope before a
+/// source-backed NormativeClaim has been instantiated for the case.
+#[test]
+fn current_action_option_rejects_out_of_jurisdiction_scope_result_without_legal_claim() {
+    let result = ActionOption::try_new(
+        ActionStatus::OutOfJurisdiction,
+        vec![factual(1)],
+        vec![],
+        vec![],
+    );
+
+    assert_eq!(
+        result.unwrap_err(),
+        crate::ActionOptionError::MissingLegalSupport
+    );
+}

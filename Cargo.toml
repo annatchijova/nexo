@@ -1,0 +1,10 @@
+[workspace]
+members = ["crates/nexo-core"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Anna Tchijova", "Codex"]
+repository = "https://github.com/annatchijova/nexo"

@@ -87,7 +87,7 @@ honest absence/staleness/scope results cannot exist as typed values
 adapter is pressured to omit the result, mislabel it, or manufacture support
 ```
 
-## Decision required before `nexo-integrity`
+## Remediation accepted before `nexo-integrity`
 
 Do not weaken `ActionOption`. Preserve it as a proof-carrying actionable route
 with non-empty factual and legal support. Introduce a separate evaluation
@@ -96,17 +96,22 @@ result type, for example:
 ```text
 ActionEvaluation
 ├── Actionable(ActionOption)
-└── NonActionable(EvaluationBlock)
-    ├── InsufficientFacts
-    ├── OutOfJurisdiction
-    ├── PolicyNotCurrent
-    └── Abstain
+│   ├── Supported
+│   └── ConditionallySupported
+└── NonActionable
+    ├── InsufficientFacts(legal route + missing requirements)
+    ├── Contraindicated(factual context + legal grounds)
+    ├── OutOfJurisdiction(jurisdiction evidence + policy bundle)
+    ├── PolicyNotCurrent(policy bundle + freshness evidence)
+    └── Abstain(typed abstention cause)
 ```
 
-`EvaluationBlock` needs its own support semantics: factual context where
-available, policy-bundle identity and scope/freshness evidence, explicit
-missing requirements, and an abstention reason. It must not impersonate an
-actionable legal claim.
+The remediation explicitly rejects `EvaluationBlock` and its `Option<T>` bag.
+Each Rust variant carries a payload with private fields and validating
+constructors, so callers cannot produce a `POLICY_NOT_CURRENT` result without
+both policy-bundle identity and freshness evidence. The same rule makes a
+negative result proof-carrying without making it impersonate an actionable
+legal claim.
 
 `Contraindicated` should remain a case-specific `ActionOption` only if it has
 both factual and legal/policy grounds. Otherwise it is an `Abstain` result.
@@ -116,3 +121,4 @@ both factual and legal/policy grounds. Otherwise it is an `Abstain` result.
 | Vector | Result | Why it failed |
 | --- | --- | --- |
 | Weaken the global `ActionOption` invariant for negative statuses | Rejected | It would allow a visible route without its two explanation paths, erasing the central proof obligation. |
+| Use one `EvaluationBlock` with optional evidence fields | Rejected | It represents invalid combinations such as a stale-policy status without a policy bundle or freshness evidence. |

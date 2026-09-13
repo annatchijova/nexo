@@ -24,15 +24,32 @@ The action evaluator is pure and deterministic. Persistence, HTTP, object storag
 | `NormativeClaim` | A jurisdiction-specific legal or policy assertion. | Primary source, locator, jurisdiction, validity interval, policy version. |
 | `ActionOption` | A possible action shown to the person. | Factual and legal support, requirements, state. |
 
-## Action states
+## Action evaluation states
 
-`SUPPORTED`, `CONDITIONALLY_SUPPORTED`, `INSUFFICIENT_FACTS`, `CONTRAINDICATED`, `OUT_OF_JURISDICTION`, `POLICY_NOT_CURRENT`, and `ABSTAIN` are domain values, not display strings.
+`ActionEvaluation` is a closed sum type:
+
+```text
+ActionEvaluation
+├── Actionable(ActionOption)
+│   ├── SUPPORTED
+│   └── CONDITIONALLY_SUPPORTED
+└── NonActionable
+    ├── INSUFFICIENT_FACTS     → legal route + named missing requirements
+    ├── CONTRAINDICATED        → factual context + legal grounds
+    ├── OUT_OF_JURISDICTION    → jurisdiction evidence + policy-bundle identity
+    ├── POLICY_NOT_CURRENT     → policy-bundle identity + freshness evidence
+    └── ABSTAIN                → one typed abstention cause
+```
+
+An actionable route always has factual and legal support. A non-actionable
+evaluation has the smaller, specific proof obligation appropriate to why no
+route may be offered; it is never represented as a partially populated action.
 
 `AVAILABLE` is a UI projection permitted only for a `SUPPORTED` action whose mandatory requirements are all satisfied.
 
 ## Verifiable invariants
 
-For every visible action:
+For every visible actionable route:
 
 ```text
 factual_support is non-empty
@@ -42,6 +59,11 @@ every normative claim has primary source + locator + jurisdiction + validity int
 unmet mandatory requirement => action is not AVAILABLE
 Inference alone cannot change UNSUPPORTED into SUPPORTED
 ```
+
+For every visible non-actionable evaluation, its sum-type variant requires the
+auditable reason for that result. For example, `POLICY_NOT_CURRENT` requires a
+policy-bundle identity and freshness evidence; it cannot silently become an
+unstructured status plus optional fields.
 
 The linguistic consequence is deliberate: Spanish, English, and Russian explanations may differ, but all must reference the same authorized graph support. Explanations can be discarded and regenerated without changing the epistemic state of the case.
 

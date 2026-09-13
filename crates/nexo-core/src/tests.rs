@@ -21,7 +21,7 @@ fn legal(value: u64) -> NormativeClaimId {
 #[test]
 fn rejects_an_action_without_factual_support() {
     let result = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         vec![],
         vec![legal(2)],
         vec![],
@@ -37,7 +37,7 @@ fn rejects_an_action_without_factual_support() {
 #[test]
 fn rejects_an_action_without_legal_support() {
     let result = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         vec![factual(1)],
         vec![],
         vec![],
@@ -79,13 +79,13 @@ fn supported_action_with_complete_support_is_available() {
     assert!(action.is_available());
 }
 
-/// Invariant: partial factual knowledge can be displayed as a non-available
-/// action whose missing requirements remain inspectable.
+/// Invariant: an evidenced route with an outstanding condition is not available
+/// and keeps its missing requirements inspectable.
 #[test]
-fn insufficient_facts_is_not_available_and_preserves_missing_requirements() {
+fn conditionally_supported_action_is_not_available_and_preserves_missing_requirements() {
     let missing = RequirementId::new(node(3));
     let action = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         vec![factual(1)],
         vec![legal(2)],
         vec![missing],
@@ -105,7 +105,7 @@ fn rejects_factual_support_above_the_domain_limit() {
         .collect();
 
     let result = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         factual_support,
         vec![legal(2)],
         vec![],
@@ -122,7 +122,7 @@ fn rejects_legal_support_above_the_domain_limit() {
     let legal_support = (1..=(MAX_LEGAL_SUPPORT as u64 + 1)).map(legal).collect();
 
     let result = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         vec![factual(1)],
         legal_support,
         vec![],
@@ -141,7 +141,7 @@ fn rejects_unmet_requirements_above_the_domain_limit() {
         .collect();
 
     let result = ActionOption::try_new(
-        ActionStatus::InsufficientFacts,
+        ActionStatus::ConditionallySupported,
         vec![factual(1)],
         vec![legal(2)],
         unmet_requirements,
@@ -150,54 +150,5 @@ fn rejects_unmet_requirements_above_the_domain_limit() {
     assert_eq!(
         result.unwrap_err(),
         crate::ActionOptionError::TooManyUnmetRequirements
-    );
-}
-
-/// Red-team counterexample: a factual case may honestly abstain because no
-/// authoritative legal source has been selected. The current ActionOption
-/// constructor rejects it, proving this status cannot always mean an option.
-#[test]
-fn current_action_option_rejects_abstention_without_legal_support() {
-    let result = ActionOption::try_new(ActionStatus::Abstain, vec![factual(1)], vec![], vec![]);
-
-    assert_eq!(
-        result.unwrap_err(),
-        crate::ActionOptionError::MissingLegalSupport
-    );
-}
-
-/// Red-team counterexample: policy freshness is knowable from a policy bundle
-/// before any case evidence exists. The current constructor rejects that
-/// evaluation result because it requires factual support.
-#[test]
-fn current_action_option_rejects_policy_not_current_without_factual_support() {
-    let result = ActionOption::try_new(
-        ActionStatus::PolicyNotCurrent,
-        vec![],
-        vec![legal(2)],
-        vec![],
-    );
-
-    assert_eq!(
-        result.unwrap_err(),
-        crate::ActionOptionError::MissingFactualSupport
-    );
-}
-
-/// Red-team counterexample: a jurisdiction-scope determination can be made
-/// from selected jurisdiction metadata and a policy bundle scope before a
-/// source-backed NormativeClaim has been instantiated for the case.
-#[test]
-fn current_action_option_rejects_out_of_jurisdiction_scope_result_without_legal_claim() {
-    let result = ActionOption::try_new(
-        ActionStatus::OutOfJurisdiction,
-        vec![factual(1)],
-        vec![],
-        vec![],
-    );
-
-    assert_eq!(
-        result.unwrap_err(),
-        crate::ActionOptionError::MissingLegalSupport
     );
 }

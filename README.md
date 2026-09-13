@@ -10,6 +10,11 @@ ActionOption
   └─ legal support   → versioned rule → official source + locator
 ```
 
+An honest negative result is typed too: a stale policy requires its bundle and
+freshness evidence; an out-of-jurisdiction result requires scope evidence; an
+abstention carries its precise cause. NEXO never fakes an `ActionOption` merely
+to display that no action can be offered.
+
 The first supported jurisdictions are Argentina and the United States. They will be independent policy bundles implementing a shared domain contract; NEXO does not flatten distinct legal systems into one generic rule set.
 
 ## Core principles

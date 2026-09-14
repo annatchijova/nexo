@@ -52,6 +52,15 @@ pub enum JurisdictionCode {
     UnitedStates,
 }
 
+impl JurisdictionCode {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Argentina => "AR",
+            Self::UnitedStates => "US",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourcePolicy {
     authorities: Vec<AuthorityKind>,

@@ -43,10 +43,16 @@ jobs:
         if: failure()
         run: |
           if [ -f /tmp/test.log ]; then
-            grep -E "^test .* FAILED$" /tmp/test.log | while IFS= read -r line; do
+            # CARGO_TERM_COLOR=always interleaves ANSI escapes; strip them
+            # before pattern matching.
+            sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/test.log > /tmp/test.plain
+            grep -E "^test .* FAILED$" /tmp/test.plain | while IFS= read -r line; do
               printf '::error title=failed test::%s\n' "$line"
             done
-            awk '/---- .* stdout ----/{flag=1} flag{print} /^test result:/{flag=0}' /tmp/test.log \
+            grep -E "^test result:" /tmp/test.plain | while IFS= read -r line; do
+              printf '::error title=test summary::%s\n' "$line"
+            done
+            awk '/---- .* stdout ----/{flag=1} flag{print} /^test result:/{flag=0}' /tmp/test.plain \
               | head -n 80 | while IFS= read -r line; do
               printf '::error title=failure detail::%s\n' "$line"
             done

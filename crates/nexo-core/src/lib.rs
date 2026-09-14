@@ -7,9 +7,11 @@
 use core::num::NonZeroU64;
 
 mod case_graph;
+mod evaluator;
 mod policy;
 
 pub use case_graph::*;
+pub use evaluator::*;
 pub use policy::*;
 
 /// Maximum references retained in each support collection for one action.
@@ -236,6 +238,10 @@ impl NormativeSource {
     pub const fn authority_kind(&self) -> AuthorityKind {
         self.authority_kind
     }
+
+    pub const fn id(&self) -> NormativeSourceId {
+        self.id
+    }
     pub const fn acquisition_channel(&self) -> AcquisitionChannel {
         self.acquisition_channel
     }
@@ -312,6 +318,22 @@ impl NormativeClaim {
     }
     pub fn sources(&self) -> &[ClaimSourceSupport] {
         &self.sources
+    }
+
+    pub const fn id(&self) -> NormativeClaimId {
+        self.id
+    }
+
+    pub const fn policy_bundle(&self) -> PolicyBundleId {
+        self.policy_bundle
+    }
+
+    pub const fn validity(&self) -> ValidityInterval {
+        self.validity
+    }
+
+    pub fn jurisdiction(&self) -> &NonEmptyText {
+        &self.jurisdiction
     }
 }
 
@@ -799,6 +821,9 @@ mod case_graph_tests;
 
 #[cfg(test)]
 mod case_graph_property_tests;
+
+#[cfg(test)]
+mod evaluator_tests;
 
 #[cfg(test)]
 mod policy_tests;

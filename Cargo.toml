@@ -6,5 +6,5 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-authors = ["Anna Tchijova", "Codex"]
+authors = ["Anna Tchijova", "Codex", "Claude", "Kimi"]
 repository = "https://github.com/annatchijova/nexo"

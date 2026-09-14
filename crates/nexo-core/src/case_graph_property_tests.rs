@@ -38,13 +38,15 @@ enum Step {
 }
 
 fn step_strategy() -> impl Strategy<Value = Step> {
+    // prop_oneof! requires every branch to carry an explicit weight once any
+    // branch is weighted; artifacts are biased to keep plans buildable.
     prop_oneof![
         2 => Just(Step::Artifact),
-        (0usize..32).prop_map(|artifact_index| Step::Observation { artifact_index }),
-        Just(Step::Assertion),
-        prop::collection::vec(0usize..32, 1..=4)
+        1 => (0usize..32).prop_map(|artifact_index| Step::Observation { artifact_index }),
+        1 => Just(Step::Assertion),
+        1 => prop::collection::vec(0usize..32, 1..=4)
             .prop_map(|input_indices| Step::Derived { input_indices }),
-        prop::collection::vec(0usize..32, 1..=4)
+        1 => prop::collection::vec(0usize..32, 1..=4)
             .prop_map(|input_indices| Step::Inference { input_indices }),
     ]
 }

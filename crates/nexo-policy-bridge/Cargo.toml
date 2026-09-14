@@ -1,0 +1,12 @@
+[package]
+name = "nexo-policy-bridge"
+description = "Integrity-verified capture bridge for NEXO policy bundles."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nexo-core = { path = "../nexo-core" }
+nexo-integrity = { path = "../nexo-integrity" }

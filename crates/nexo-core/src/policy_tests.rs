@@ -1,9 +1,10 @@
 use crate::{
-    AcquisitionChannel, ArtifactId, AuthorityKind, CaptureStatus, CivilDate, DigestId,
+    AcquisitionChannel, ArtifactId, AuthorityKind, CivilDate, DigestId,
     JurisdictionCode, NodeId, NormativeClaimId, NormativeSource, NormativeSourceId, PolicyBundle,
     PolicyBundleError, PolicyBundleId, PolicyBundleSet, PolicyBundleSetError, PolicySchemaVersion,
-    PolicySelection, PolicyVersion, ProvenanceId, SourcePolicy, SourcePolicyError, UtcInstant,
-    ValidityInterval,
+    PolicySelection,
+    PolicyVersion, ProvenanceId, SourcePolicy, SourcePolicyError, UtcInstant, ValidityInterval,
+    VerifiedCaptureAttestation,
 };
 use core::num::NonZeroU64;
 
@@ -28,6 +29,14 @@ fn bundle(
         vec![AcquisitionChannel::OfficialApi],
     )
     .unwrap();
+    let capture = unsafe {
+        VerifiedCaptureAttestation::from_verified_capture(
+            ArtifactId::new(node(id + 200)),
+            DigestId::new(node(id + 300)),
+            ProvenanceId::new(node(id + 400)),
+            UtcInstant::from_unix_seconds(0),
+        )
+    };
     PolicyBundle::try_new(
         PolicyBundleId::new(node(id)),
         PolicySchemaVersion::CURRENT,
@@ -36,11 +45,7 @@ fn bundle(
         validity,
         vec![NormativeClaimId::new(node(id + 100))],
         source_policy,
-        ArtifactId::new(node(id + 200)),
-        DigestId::new(node(id + 300)),
-        ProvenanceId::new(node(id + 400)),
-        UtcInstant::from_unix_seconds(0),
-        CaptureStatus::Verified,
+        capture,
     )
     .unwrap()
 }
@@ -116,29 +121,6 @@ fn overlapping_current_bundles_fail_closed_as_ambiguous() {
         ),
         PolicySelection::AmbiguousSelection
     );
-}
-
-#[test]
-fn unverified_capture_cannot_construct_a_bundle() {
-    let result = PolicyBundle::try_new(
-        bundle(1, JurisdictionCode::Argentina, (2026, 1, 1), None).id(),
-        PolicySchemaVersion::CURRENT,
-        PolicyVersion::try_new("v1".into()).unwrap(),
-        JurisdictionCode::Argentina,
-        ValidityInterval::try_new(CivilDate::try_new(2026, 1, 1).unwrap(), None).unwrap(),
-        vec![NormativeClaimId::new(node(101))],
-        SourcePolicy::try_new(
-            vec![AuthorityKind::PrimaryOfficial],
-            vec![AcquisitionChannel::OfficialApi],
-        )
-        .unwrap(),
-        ArtifactId::new(node(201)),
-        DigestId::new(node(301)),
-        ProvenanceId::new(node(401)),
-        UtcInstant::from_unix_seconds(0),
-        CaptureStatus::Unverified,
-    );
-    assert_eq!(result.unwrap_err(), PolicyBundleError::CaptureNotVerified);
 }
 
 #[test]
@@ -220,11 +202,14 @@ fn bundles_reject_duplicate_claims_and_unknown_schema() {
             NormativeClaimId::new(node(5)),
         ],
         common.4.clone(),
-        common.5,
-        common.6,
-        common.7,
-        common.8,
-        CaptureStatus::Verified,
+        unsafe {
+            VerifiedCaptureAttestation::from_verified_capture(
+                common.5,
+                common.6,
+                common.7,
+                common.8,
+            )
+        },
     );
     assert_eq!(duplicate.unwrap_err(), PolicyBundleError::DuplicateClaim);
     assert_eq!(

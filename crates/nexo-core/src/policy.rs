@@ -108,10 +108,56 @@ pub enum SourcePolicyError {
     UnverifiedAuthority,
 }
 
+/// A capture whose bytes were verified by an external integrity boundary.
+///
+/// The fields are private so safe callers cannot manufacture an attestation
+/// from serialized metadata. The bridge is the only intended caller of the
+/// `unsafe` constructor, after recomputing and comparing the capture digest.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CaptureStatus {
-    Verified,
-    Unverified,
+pub struct VerifiedCaptureAttestation {
+    captured_artifact: ArtifactId,
+    digest: DigestId,
+    provenance: ProvenanceId,
+    retrieved_at: UtcInstant,
+}
+
+impl VerifiedCaptureAttestation {
+    /// Creates an attestation after an external verifier has checked exact
+    /// captured bytes against the expected digest.
+    ///
+    /// # Safety
+    ///
+    /// The caller must have compared the exact captured bytes with the
+    /// expected digest using the integrity boundary immediately beforehand.
+    pub unsafe fn from_verified_capture(
+        captured_artifact: ArtifactId,
+        digest: DigestId,
+        provenance: ProvenanceId,
+        retrieved_at: UtcInstant,
+    ) -> Self {
+        Self {
+            captured_artifact,
+            digest,
+            provenance,
+            retrieved_at,
+        }
+    }
+
+    pub const fn captured_artifact(&self) -> ArtifactId {
+        self.captured_artifact
+    }
+
+    pub const fn digest(&self) -> DigestId {
+        self.digest
+    }
+
+    pub const fn provenance(&self) -> ProvenanceId {
+        self.provenance
+    }
+
+    pub const fn retrieved_at(&self) -> UtcInstant {
+        self.retrieved_at
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -139,11 +185,7 @@ impl PolicyBundle {
         validity: ValidityInterval,
         claims: Vec<NormativeClaimId>,
         source_policy: SourcePolicy,
-        captured_artifact: ArtifactId,
-        digest: DigestId,
-        provenance: ProvenanceId,
-        retrieved_at: UtcInstant,
-        capture_status: CaptureStatus,
+        capture: VerifiedCaptureAttestation,
     ) -> Result<Self, PolicyBundleError> {
         if schema_version != PolicySchemaVersion::CURRENT {
             return Err(PolicyBundleError::UnsupportedSchemaVersion);
@@ -157,9 +199,6 @@ impl PolicyBundle {
         if has_duplicate(&claims) {
             return Err(PolicyBundleError::DuplicateClaim);
         }
-        if capture_status != CaptureStatus::Verified {
-            return Err(PolicyBundleError::CaptureNotVerified);
-        }
         Ok(Self {
             id,
             schema_version,
@@ -168,10 +207,10 @@ impl PolicyBundle {
             validity,
             claims,
             source_policy,
-            captured_artifact,
-            digest,
-            provenance,
-            retrieved_at,
+            captured_artifact: capture.captured_artifact,
+            digest: capture.digest,
+            provenance: capture.provenance,
+            retrieved_at: capture.retrieved_at,
         })
     }
 
@@ -230,7 +269,6 @@ pub enum PolicyBundleError {
     MissingClaim,
     TooManyClaims,
     DuplicateClaim,
-    CaptureNotVerified,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

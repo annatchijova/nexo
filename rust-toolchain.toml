@@ -1,0 +1,6 @@
+# Pins the toolchain for every contributor, agent, and CI runner.
+# The workspace uses edition 2024 and resolver 3, which require Rust >= 1.85.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy"]
+profile = "minimal"

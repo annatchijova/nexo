@@ -37,7 +37,7 @@ PolicyBundle
   provenance          acquisition and collector reference
 ```
 
-`CaptureStatus::Verified` is an adapter attestation accepted by this
+`VerifiedCaptureAttestation` is an adapter capability accepted by this
 dependency-free kernel; it is not a cryptographic proof generated here. The
 application/integrity boundary must verify that the captured bytes match the
 digest before supplying the attestation. A caller that forges this status is

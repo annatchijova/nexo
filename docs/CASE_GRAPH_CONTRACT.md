@@ -13,9 +13,10 @@ action evaluation.
 
 ## Status
 
-Proposed for the evidence-graph layer (README layer 2). No implementation
-exists yet; `nexo-core` currently holds only opaque `NodeId` references and
-the support kinds that will point at these nodes.
+Proposed for the evidence-graph layer (README layer 2). Its smallest
+complete slice is implemented in `crates/nexo-core/src/case_graph.rs` with
+the adversarial and property tests required by `docs/DEVELOPMENT_CYCLE.md`;
+the evaluator, persistence mapping, and extraction paths remain unstarted.
 
 ## Threat model
 
@@ -41,7 +42,7 @@ boundary is structural (ADR 0001 and the compile guard in
 
 | Node | Meaning | Required provenance |
 | --- | --- | --- |
-| `Artifact` | Original bytes submitted to NEXO. | Content digest, byte size, ingestion metadata, source provenance. |
+| `Artifact` | Original bytes submitted to NEXO. | Content digest reference, byte size, ingestion record reference, source provenance reference. |
 | `Observation` | A direct extraction from an artifact. | Artifact reference, extractor identity and version, precise locator, recording instant. |
 | `UserAssertion` | A statement declared by a person. | Actor identity, recording instant, confirmation state. |
 | `DerivedFact` | A reproducible transformation over declared inputs. | Non-empty input references, transformation identity and version. |
@@ -76,7 +77,8 @@ explain a case fact: `Artifact`, `Observation`, `UserAssertion`,
    factual-support kind, and the reference subgraph reachable through
    derivation inputs is acyclic. Reproducibility requires a well-founded
    input order; a cycle makes the transformation unreproducible by
-   construction.
+   construction. Under sequential node-id assignment a cycle is structurally
+   unreachable; the check remains as defense for any future bulk-load path.
 4. An `Inference` references at least one input of any node kind.
 5. Two nodes with identical content remain distinct nodes. Identity is the
    assigned `NodeId`; the core never deduplicates.
@@ -92,8 +94,10 @@ adapter boundary; the core never invents one.
 ## Cardinality bounds
 
 Consistent with the existing `MAX_*` discipline, every reference collection
-is bounded at construction: derivation inputs and inference inputs each have
-a named maximum. Adapters remain responsible for enforcing byte and body
+is bounded at construction: derivation inputs are bounded by
+`MAX_DERIVATION_INPUTS` (64) and inference inputs by
+`MAX_INFERENCE_INPUTS` (64). Adapters remain responsible for enforcing byte
+and body
 limits before allocation, as stated in `nexo-core`; these bounds cap retained
 domain state. Graph depth is not bounded at the core: acyclicity plus
 bounded fan-in is sufficient for deterministic traversal, and a depth cap
@@ -102,10 +106,14 @@ would truncate legitimate case structure arbitrarily.
 ## Content and bytes
 
 The core never receives, hashes, opens, or parses artifact bytes. An
-`Artifact` node carries an opaque fixed-size content digest recorded by the
-ingestion path (which uses `nexo-integrity`) plus the byte size. Equality
-between digest and stored bytes is an application-layer obligation, mirroring
-the capture-digest invariant of `docs/POLICY_SOURCE_CONTRACT.md`. Extraction
+`Artifact` node carries a typed reference to the content digest recorded by
+the ingestion path (which uses `nexo-integrity`) plus the byte size; digest
+bytes live in the application and object layers. This follows the
+representation idiom already established in `nexo-core`, where provenance is
+carried as typed node references (`ArtifactId`, `DigestId`, `ProvenanceId`,
+`NonEmptyText`) rather than embedded payloads. Equality between digest and
+stored bytes is an application-layer obligation, mirroring the capture-digest
+invariant of `docs/POLICY_SOURCE_CONTRACT.md`. Extraction
 results enter the graph only as typed records produced by the sandbox worker
 of `docs/SANDBOX.md`; an extractor failure becomes a typed failure record,
 never an `Observation`.
@@ -147,8 +155,8 @@ because it cannot enter `factual_support` at all.
 - Not an extractor and not a parser; artifact bytes stay behind the sandbox
   boundary.
 - No confidence arithmetic. Confidence on `Inference` is a finite, discrete,
-  ordered bound — never a float — and its exact scale is deferred to the
-  implementation slice.
+  ordered bound — never a float. The initial scale is `Low < Medium < High`,
+  ordinal only; changing it requires ADR-level review.
 - No graph query language, no merging or deduplication semantics, no
   jurisdiction or policy decisions.
 

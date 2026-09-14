@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Operating guide for any AI agent (Claude Code, Codex, or otherwise) with write
-access to this repository. It complements, and does not replace:
+Operating guide for any AI agent (Claude Code, Codex, Kimi, or otherwise) with
+write access to this repository. It complements, and does not replace:
 
 - [`docs/COLLABORATION.md`](docs/COLLABORATION.md) — git identity and history rules.
 - [`docs/DEVELOPMENT_CYCLE.md`](docs/DEVELOPMENT_CYCLE.md) — the contract-first layer sequence.

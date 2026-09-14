@@ -253,6 +253,10 @@ impl ClaimSourceSupport {
     pub const fn new(source: NormativeSourceId, role: SupportRole) -> Self {
         Self { source, role }
     }
+
+    pub const fn source(&self) -> NormativeSourceId {
+        self.source
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NormativeClaimError {
@@ -292,7 +296,7 @@ impl NormativeClaim {
         if sources.len() > MAX_LEGAL_SUPPORT {
             return Err(NormativeClaimError::TooManySources);
         }
-        if has_duplicate(&sources) {
+        if has_duplicate_source(&sources) {
             return Err(NormativeClaimError::DuplicateSource);
         }
         Ok(Self {
@@ -659,6 +663,14 @@ fn has_duplicate<T: PartialEq>(values: &[T]) -> bool {
         .iter()
         .enumerate()
         .any(|(index, value)| values[index + 1..].contains(value))
+}
+
+fn has_duplicate_source(values: &[ClaimSourceSupport]) -> bool {
+    values.iter().enumerate().any(|(index, value)| {
+        values[index + 1..]
+            .iter()
+            .any(|other| other.source() == value.source())
+    })
 }
 
 /// Why a non-actionable evaluation payload could not be constructed safely.

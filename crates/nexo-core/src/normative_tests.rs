@@ -60,3 +60,22 @@ fn claim_rejects_duplicate_source_reference() {
     );
     assert_eq!(result.unwrap_err(), NormativeClaimError::DuplicateSource);
 }
+
+#[test]
+fn claim_rejects_same_source_even_when_roles_differ() {
+    let source_id = NormativeSourceId::new(node(3));
+    let validity =
+        ValidityInterval::try_new(CivilDate::try_new(2026, 1, 1).unwrap(), None).unwrap();
+    let result = NormativeClaim::try_new(
+        NormativeClaimId::new(node(1)),
+        NonEmptyText::try_new("Right".into()).unwrap(),
+        NonEmptyText::try_new("US".into()).unwrap(),
+        validity,
+        PolicyBundleId::new(node(2)),
+        vec![
+            ClaimSourceSupport::new(source_id, SupportRole::Primary),
+            ClaimSourceSupport::new(source_id, SupportRole::Corroborating),
+        ],
+    );
+    assert_eq!(result.unwrap_err(), NormativeClaimError::DuplicateSource);
+}

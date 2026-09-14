@@ -7,7 +7,7 @@ NEXO treats an action option as a conclusion with two independent support paths:
 ```text
 ActionOption
   ├── factual_support → provenance → Artifact | UserAssertion
-  └── legal_support   → NormativeClaim → official source + locator
+  └── legal_support   → NormativeClaim → NormativeSource → captured bytes
 ```
 
 The action evaluator is pure and deterministic. Persistence, HTTP, object storage, time acquisition, and model calls are outside it.
@@ -21,8 +21,10 @@ The action evaluator is pure and deterministic. Persistence, HTTP, object storag
 | `UserAssertion` | A statement declared by a person. | Actor, recording time, confirmation state. |
 | `DerivedFact` | A reproducible transformation over declared inputs. | Input references, transformation ID/version. |
 | `Inference` | An interpretation not directly observed. | Input references, method/version, bounded confidence semantics. |
-| `NormativeClaim` | A jurisdiction-specific legal or policy assertion. | Primary source, locator, jurisdiction, validity interval, policy version. |
-| `ActionOption` | A possible action shown to the person. | Factual and legal support, requirements, state. |
+| `NormativeSource` | A captured representation of normative material. | Authority kind, issuer, locator, acquisition channel, retrieval time, captured artifact, digest, provenance. |
+| `NormativeClaim` | A jurisdiction-specific legal proposition. | Proposition, jurisdiction, validity interval, policy version, one or more `NormativeSource` references. |
+| `ActionOption` | A possible legal/rights route shown to the person. | Factual and normative support, requirements, state, preparations. |
+| `Preparation` | Material NEXO can prepare for a supported route. | `ActionOption` reference, deterministic inputs, output artifact/provenance. |
 
 ## Action evaluation states
 
@@ -55,7 +57,8 @@ For every visible actionable route:
 factual_support is non-empty
 legal_support is non-empty
 every factual support node has valid provenance
-every normative claim has primary source + locator + jurisdiction + validity interval + policy version
+every normative claim has one or more source references + jurisdiction + validity interval + policy version
+every normative source has authority kind + acquisition channel + locator + captured artifact + digest + provenance
 unmet mandatory requirement => action is not AVAILABLE
 Inference alone cannot change UNSUPPORTED into SUPPORTED
 ```
@@ -66,6 +69,39 @@ policy-bundle identity and freshness evidence; it cannot silently become an
 unstructured status plus optional fields.
 
 The linguistic consequence is deliberate: Spanish, English, and Russian explanations may differ, but all must reference the same authorized graph support. Explanations can be discarded and regenerated without changing the epistemic state of the case.
+
+## Normative authority is not acquisition channel
+
+`NormativeSource` deliberately separates **what makes material authoritative**
+from **how NEXO acquired its representation**:
+
+```text
+official statute fetched from an official website
+    authority_kind     = PRIMARY_OFFICIAL
+    acquisition_channel = WEB_FETCH
+```
+
+`WEB_FETCH` therefore does not downgrade an official statute into generic web
+content. Conversely, a secondary digest obtained through a legal-research tool
+remains secondary even when its transport is trusted. Prompt text, agent
+configuration, model output, user preferences, and workflow playbooks may guide
+questions, UX, or evaluation order; none can create a `NormativeClaim`.
+
+## Preparation boundary
+
+`ActionOption` represents the legal or rights route, for example “request
+access to personal data.” A `Preparation` is a system capability associated with
+that route: `DraftRequest`, `EvidencePackage`, or `Export`.
+
+```text
+NEXO may establish:  this route is supported
+NEXO may prepare:    these are the materials
+NEXO may not cross:  preparation → external legal act
+```
+
+External delivery, filing, acceptance of terms, or any other act with legal
+effect remains outside NEXO's authority boundary and requires an explicit human
+actor in a future application layer.
 
 ## Layers and dependency rule
 

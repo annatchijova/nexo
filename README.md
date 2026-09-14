@@ -7,7 +7,7 @@ NEXO helps a person turn scattered digital incident material into an inspectable
 ```text
 ActionOption
   ├─ factual support → provenance → artifact / user assertion
-  └─ legal support   → versioned rule → official source + locator
+  └─ legal support   → NormativeClaim → NormativeSource → captured bytes
 ```
 
 An honest negative result is typed too: a stale policy requires its bundle and
@@ -16,6 +16,12 @@ abstention carries its precise cause. NEXO never fakes an `ActionOption` merely
 to display that no action can be offered.
 
 The first supported jurisdictions are Argentina and the United States. They will be independent policy bundles implementing a shared domain contract; NEXO does not flatten distinct legal systems into one generic rule set.
+
+NEXO distinguishes normative authority from acquisition: a statute from an
+official issuer remains primary even if acquired through a web fetch. It also
+distinguishes a rights route from the materials used to pursue it: NEXO may
+prepare a request, evidence package, or export, but it never silently performs
+the external legal act.
 
 ## Core principles
 

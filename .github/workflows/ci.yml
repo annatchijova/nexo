@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # The toolchain (and clippy component) is pinned by rust-toolchain.toml;
       # `rustup show` installs it if the runner does not have it yet.

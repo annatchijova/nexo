@@ -13,6 +13,87 @@ pub const MAX_FACTUAL_SUPPORT: usize = 64;
 pub const MAX_LEGAL_SUPPORT: usize = 64;
 pub const MAX_UNMET_REQUIREMENTS: usize = 64;
 
+/// A calendar date with no implied timezone or time of day.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CivilDate {
+    year: i32,
+    month: u8,
+    day: u8,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CivilDateError {
+    UnsupportedYear,
+    InvalidMonth,
+    InvalidDay,
+}
+impl CivilDate {
+    pub fn try_new(year: i32, month: u8, day: u8) -> Result<Self, CivilDateError> {
+        if !(1..=9999).contains(&year) {
+            return Err(CivilDateError::UnsupportedYear);
+        }
+        if !(1..=12).contains(&month) {
+            return Err(CivilDateError::InvalidMonth);
+        }
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let max = match month {
+            2 if leap => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        if day == 0 || day > max {
+            return Err(CivilDateError::InvalidDay);
+        }
+        Ok(Self { year, month, day })
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ValidityInterval {
+    effective_from: CivilDate,
+    effective_to: Option<CivilDate>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ValidityIntervalError {
+    EndBeforeStart,
+}
+impl ValidityInterval {
+    /// A civil-date interval closed at both ends: `[effective_from, effective_to]`.
+    /// `None` means an explicitly open-ended interval, not an unknown end.
+    /// Unknown currency must fail closed in the policy layer as `POLICY_NOT_CURRENT`.
+    pub fn try_new(
+        effective_from: CivilDate,
+        effective_to: Option<CivilDate>,
+    ) -> Result<Self, ValidityIntervalError> {
+        if effective_to.is_some_and(|end| end < effective_from) {
+            return Err(ValidityIntervalError::EndBeforeStart);
+        }
+        Ok(Self {
+            effective_from,
+            effective_to,
+        })
+    }
+
+    pub fn contains(&self, reference: CivilDate) -> bool {
+        reference >= self.effective_from
+            && match self.effective_to {
+                Some(end) => reference <= end,
+                None => true,
+            }
+    }
+}
+/// A UTC instant supplied by an adapter; the core never reads an ambient clock.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct UtcInstant {
+    seconds_since_unix_epoch: i64,
+}
+impl UtcInstant {
+    pub const fn from_unix_seconds(seconds_since_unix_epoch: i64) -> Self {
+        Self {
+            seconds_since_unix_epoch,
+        }
+    }
+}
+
 /// An opaque reference to a durable node in a case graph.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NodeId(NonZeroU64);
@@ -509,3 +590,6 @@ mod evaluation_tests;
 
 #[cfg(test)]
 mod property_tests;
+
+#[cfg(test)]
+mod time_tests;

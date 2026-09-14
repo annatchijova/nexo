@@ -56,6 +56,102 @@ pub fn seal(value: &CanonicalValue) -> Sha256Digest {
     hash_bytes(&canonical_bytes(value))
 }
 
+/// An append-only event whose digest commits its complete payload and predecessor.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditEntry {
+    sequence: u64,
+    event: CanonicalValue,
+    previous: Option<Sha256Digest>,
+    digest: Sha256Digest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuditReceipt {
+    length: u64,
+    tip: Option<Sha256Digest>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AuditTrail {
+    entries: Vec<AuditEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuditVerificationError {
+    Sequence { index: usize },
+    Link { index: usize },
+    Digest { index: usize },
+    ReceiptLength,
+    ReceiptTip,
+}
+
+impl AuditTrail {
+    pub fn append(&mut self, event: CanonicalValue) -> &AuditEntry {
+        let sequence = self.entries.len() as u64;
+        let previous = self.entries.last().map(|entry| entry.digest);
+        let digest = audit_digest(sequence, &event, previous);
+        self.entries.push(AuditEntry {
+            sequence,
+            event,
+            previous,
+            digest,
+        });
+        self.entries.last().expect("entry was pushed")
+    }
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+    pub fn receipt(&self) -> AuditReceipt {
+        AuditReceipt {
+            length: self.entries.len() as u64,
+            tip: self.entries.last().map(|entry| entry.digest),
+        }
+    }
+}
+
+pub fn verify_audit(
+    entries: &[AuditEntry],
+    receipt: AuditReceipt,
+) -> Result<(), AuditVerificationError> {
+    if receipt.length != entries.len() as u64 {
+        return Err(AuditVerificationError::ReceiptLength);
+    }
+    if receipt.tip != entries.last().map(|entry| entry.digest) {
+        return Err(AuditVerificationError::ReceiptTip);
+    }
+    let mut previous = None;
+    for (index, entry) in entries.iter().enumerate() {
+        if entry.sequence != index as u64 {
+            return Err(AuditVerificationError::Sequence { index });
+        }
+        if entry.previous != previous {
+            return Err(AuditVerificationError::Link { index });
+        }
+        if entry.digest != audit_digest(entry.sequence, &entry.event, entry.previous) {
+            return Err(AuditVerificationError::Digest { index });
+        }
+        previous = Some(entry.digest);
+    }
+    Ok(())
+}
+
+fn audit_digest(
+    sequence: u64,
+    event: &CanonicalValue,
+    previous: Option<Sha256Digest>,
+) -> Sha256Digest {
+    let mut fields = BTreeMap::new();
+    fields.insert("event".into(), event.clone());
+    fields.insert(
+        "previous".into(),
+        previous
+            .map(|d| CanonicalValue::Bytes(d.0.to_vec()))
+            .unwrap_or(CanonicalValue::Null),
+    );
+    fields.insert("sequence".into(), CanonicalValue::U64(sequence));
+    seal(&CanonicalValue::Map(fields))
+}
+
 fn length(value: usize, out: &mut Vec<u8>) {
     out.extend_from_slice(&(value as u64).to_be_bytes());
 }
@@ -156,6 +252,44 @@ mod tests {
         assert_eq!(
             hash_bytes(b"abc").to_string(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+    #[test]
+    fn audit_detects_payload_edit_and_tail_truncation() {
+        let mut trail = AuditTrail::default();
+        trail.append(CanonicalValue::Text("first".into()));
+        trail.append(CanonicalValue::Text("second".into()));
+        let receipt = trail.receipt();
+        assert_eq!(verify_audit(trail.entries(), receipt), Ok(()));
+        let mut edited = trail.entries.clone();
+        edited[1].event = CanonicalValue::Text("altered".into());
+        assert_eq!(
+            verify_audit(&edited, receipt),
+            Err(AuditVerificationError::Digest { index: 1 })
+        );
+        assert_eq!(
+            verify_audit(&trail.entries()[..1], receipt),
+            Err(AuditVerificationError::ReceiptLength)
+        );
+    }
+
+    #[test]
+    fn audit_detects_reordering_and_broken_predecessor() {
+        let mut trail = AuditTrail::default();
+        trail.append(CanonicalValue::Text("first".into()));
+        trail.append(CanonicalValue::Text("second".into()));
+        let receipt = trail.receipt();
+        let mut reordered = trail.entries.clone();
+        reordered.swap(0, 1);
+        assert_eq!(
+            verify_audit(&reordered, receipt),
+            Err(AuditVerificationError::ReceiptTip)
+        );
+        let mut unlinked = trail.entries.clone();
+        unlinked[1].previous = None;
+        assert_eq!(
+            verify_audit(&unlinked, receipt),
+            Err(AuditVerificationError::Link { index: 1 })
         );
     }
 }

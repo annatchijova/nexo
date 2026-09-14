@@ -8,10 +8,12 @@ use core::num::NonZeroU64;
 
 mod case_graph;
 mod evaluator;
+mod negative_evidence;
 mod policy;
 
 pub use case_graph::*;
 pub use evaluator::*;
+pub use negative_evidence::*;
 pub use policy::*;
 
 /// Maximum references retained in each support collection for one action.
@@ -452,6 +454,7 @@ impl InsufficientFacts {
 pub struct Contraindicated {
     factual_support: Vec<FactualSupport>,
     legal_support: Vec<NormativeClaimId>,
+    evidence: Vec<ContraindicationEvidence>,
 }
 
 impl Contraindicated {
@@ -461,22 +464,32 @@ impl Contraindicated {
         factual_support: Vec<FactualSupport>,
         legal_support: Vec<NormativeClaimId>,
     ) -> Result<Self, EvaluationError> {
-        if factual_support.len() > MAX_FACTUAL_SUPPORT {
-            return Err(EvaluationError::TooManyFactualContext);
+        let _ = (factual_support, legal_support);
+        Err(EvaluationError::RelationalEvidenceRequired)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn from_evidence(
+        evidence: Vec<ContraindicationEvidence>,
+    ) -> Result<Self, EvaluationError> {
+        if evidence.is_empty() {
+            return Err(EvaluationError::RelationalEvidenceRequired);
         }
-        if legal_support.len() > MAX_LEGAL_SUPPORT {
+        if evidence.len() > MAX_LEGAL_SUPPORT {
             return Err(EvaluationError::TooManyLegalContext);
         }
-        if factual_support.is_empty() {
-            return Err(EvaluationError::MissingFactualContext);
-        }
-        if legal_support.is_empty() {
-            return Err(EvaluationError::MissingLegalContext);
-        }
-
+        let factual_support = evidence
+            .iter()
+            .map(ContraindicationEvidence::factual_support)
+            .collect();
+        let legal_support = evidence
+            .iter()
+            .map(ContraindicationEvidence::legal_ground)
+            .collect();
         Ok(Self {
             factual_support,
             legal_support,
+            evidence,
         })
     }
 
@@ -486,6 +499,10 @@ impl Contraindicated {
 
     pub fn legal_support(&self) -> &[NormativeClaimId] {
         &self.legal_support
+    }
+
+    pub fn evidence(&self) -> &[ContraindicationEvidence] {
+        &self.evidence
     }
 }
 
@@ -591,6 +608,7 @@ pub struct UnsupportedQuestion {
 pub struct ConflictingLegalClaims {
     factual_context: Vec<FactualSupport>,
     conflicting_claims: Vec<NormativeClaimId>,
+    witnesses: Vec<ConflictWitness>,
 }
 
 impl Abstention {
@@ -614,9 +632,8 @@ impl Abstention {
         factual_context: Vec<FactualSupport>,
         conflicting_claims: Vec<NormativeClaimId>,
     ) -> Result<Self, EvaluationError> {
-        Ok(Self::ConflictingLegalClaims(
-            ConflictingLegalClaims::try_new(factual_context, conflicting_claims)?,
-        ))
+        let _ = (factual_context, conflicting_claims);
+        Err(EvaluationError::RelationalEvidenceRequired)
     }
 }
 
@@ -647,19 +664,30 @@ impl ConflictingLegalClaims {
         factual_context: Vec<FactualSupport>,
         conflicting_claims: Vec<NormativeClaimId>,
     ) -> Result<Self, EvaluationError> {
+        let _ = (factual_context, conflicting_claims);
+        Err(EvaluationError::RelationalEvidenceRequired)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn from_witnesses(
+        factual_context: Vec<FactualSupport>,
+        witnesses: Vec<ConflictWitness>,
+    ) -> Result<Self, EvaluationError> {
         validate_factual_context(&factual_context)?;
-        if conflicting_claims.len() > MAX_LEGAL_SUPPORT {
-            return Err(EvaluationError::TooManyLegalContext);
-        }
-        if conflicting_claims.len() < 2 {
+        if witnesses.is_empty() {
             return Err(EvaluationError::InsufficientConflictingLegalClaims);
         }
-        if has_duplicate(&conflicting_claims) {
-            return Err(EvaluationError::DuplicateConflictingLegalClaim);
+        if witnesses.len() > MAX_LEGAL_SUPPORT {
+            return Err(EvaluationError::TooManyLegalContext);
         }
+        let conflicting_claims = witnesses
+            .iter()
+            .flat_map(|w| [w.left_claim(), w.right_claim()])
+            .collect();
         Ok(Self {
             factual_context,
             conflicting_claims,
+            witnesses,
         })
     }
 
@@ -669,6 +697,10 @@ impl ConflictingLegalClaims {
 
     pub fn conflicting_claims(&self) -> &[NormativeClaimId] {
         &self.conflicting_claims
+    }
+
+    pub fn witnesses(&self) -> &[ConflictWitness] {
+        &self.witnesses
     }
 }
 
@@ -680,13 +712,6 @@ fn validate_factual_context(factual_context: &[FactualSupport]) -> Result<(), Ev
         return Err(EvaluationError::MissingFactualContext);
     }
     Ok(())
-}
-
-fn has_duplicate<T: PartialEq>(values: &[T]) -> bool {
-    values
-        .iter()
-        .enumerate()
-        .any(|(index, value)| values[index + 1..].contains(value))
 }
 
 fn has_duplicate_source(values: &[ClaimSourceSupport]) -> bool {
@@ -704,6 +729,7 @@ pub enum EvaluationError {
     MissingLegalContext,
     MissingRequirement,
     InsufficientConflictingLegalClaims,
+    RelationalEvidenceRequired,
     DuplicateConflictingLegalClaim,
     TooManyFactualContext,
     TooManyLegalContext,
@@ -824,6 +850,9 @@ mod case_graph_property_tests;
 
 #[cfg(test)]
 mod evaluator_tests;
+
+#[cfg(test)]
+mod negative_evidence_tests;
 
 #[cfg(test)]
 mod policy_tests;

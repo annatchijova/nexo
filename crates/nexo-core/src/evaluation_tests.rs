@@ -156,7 +156,7 @@ fn contraindication_requires_factual_and_legal_context() {
 
     assert_eq!(
         result.unwrap_err(),
-        crate::EvaluationError::MissingFactualContext
+        crate::EvaluationError::RelationalEvidenceRequired
     );
 }
 
@@ -170,7 +170,7 @@ fn rejects_a_single_claim_as_a_legal_conflict() {
 
     assert_eq!(
         result.unwrap_err(),
-        crate::EvaluationError::InsufficientConflictingLegalClaims
+        crate::EvaluationError::RelationalEvidenceRequired
     );
 }
 
@@ -186,7 +186,7 @@ fn rejects_one_duplicated_claim_as_a_legal_conflict() {
 
     assert_eq!(
         result.unwrap_err(),
-        crate::EvaluationError::DuplicateConflictingLegalClaim
+        crate::EvaluationError::RelationalEvidenceRequired
     );
 }
 
@@ -199,5 +199,8 @@ fn accepts_two_distinct_claims_as_conflict_context() {
         vec![legal(2), legal(3)],
     );
 
-    assert!(result.is_ok());
+    assert_eq!(
+        result.unwrap_err(),
+        crate::EvaluationError::RelationalEvidenceRequired
+    );
 }

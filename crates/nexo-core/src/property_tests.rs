@@ -71,13 +71,6 @@ fn size_around(limit: usize) -> impl Strategy<Value = usize> {
     prop_oneof![0usize..=2, limit.saturating_sub(1)..=limit + 1]
 }
 
-fn has_duplicate<T: PartialEq>(values: &[T]) -> bool {
-    values
-        .iter()
-        .enumerate()
-        .any(|(index, value)| values[index + 1..].contains(value))
-}
-
 /// Compile-time guard for "inference alone cannot establish support".
 ///
 /// This match has no wildcard: if a future change adds an `Inference` variant
@@ -93,16 +86,10 @@ fn support_kind(support: &FactualSupport) -> &'static str {
     }
 }
 
-/// Builds only valid abstentions: bounded factual context, and for the
-/// conflict variant, claims that are distinct by construction.
+/// Builds abstentions whose public constructors remain available. Conflict
+/// abstentions are now produced only by the in-crate policy engine.
 fn abstention() -> impl Strategy<Value = Abstention> {
     let context = prop::collection::vec(factual_support(), 1..=MAX_FACTUAL_SUPPORT);
-    let distinct_claims =
-        (2..=MAX_LEGAL_SUPPORT as u64, 1u64..=u64::MAX - 64).prop_map(|(count, base)| {
-            (0..count)
-                .map(|offset| legal_claim_from(base + offset))
-                .collect::<Vec<_>>()
-        });
     prop_oneof![
         context
             .clone()
@@ -110,15 +97,7 @@ fn abstention() -> impl Strategy<Value = Abstention> {
         context
             .clone()
             .prop_map(|context| Abstention::unsupported_question(context).expect("valid")),
-        (context, distinct_claims).prop_map(|(context, claims)| {
-            Abstention::conflicting_legal_claims(context, claims)
-                .expect("distinct claims are valid")
-        }),
     ]
-}
-
-fn legal_claim_from(value: u64) -> NormativeClaimId {
-    NormativeClaimId::new(NodeId::new(NonZeroU64::new(value).expect("non-zero")))
 }
 
 proptest! {
@@ -343,26 +322,7 @@ proptest! {
         )];
         let result = Abstention::conflicting_legal_claims(factual, claims.clone());
 
-        if claims.len() > MAX_LEGAL_SUPPORT {
-            prop_assert_eq!(result.unwrap_err(), EvaluationError::TooManyLegalContext);
-        } else if claims.len() < 2 {
-            prop_assert_eq!(
-                result.unwrap_err(),
-                EvaluationError::InsufficientConflictingLegalClaims
-            );
-        } else if has_duplicate(&claims) {
-            prop_assert_eq!(
-                result.unwrap_err(),
-                EvaluationError::DuplicateConflictingLegalClaim
-            );
-        } else {
-            let Abstention::ConflictingLegalClaims(conflict) =
-                result.expect("distinct claims at or under the bound are valid")
-            else {
-                panic!("conflicting_legal_claims must build the conflicting variant");
-            };
-            prop_assert_eq!(conflict.conflicting_claims(), &claims[..]);
-        }
+        prop_assert_eq!(result.unwrap_err(), EvaluationError::RelationalEvidenceRequired);
     }
 
     /// ∀ result: ok ⇒ legal route ≠ ∅ ∧ named gap ≠ ∅, both preserved
@@ -407,24 +367,10 @@ proptest! {
         legal in size_around(MAX_LEGAL_SUPPORT)
             .prop_flat_map(|max| prop::collection::vec(legal_claim(), 0..=max)),
     ) {
-        match Contraindicated::try_new(factual.clone(), legal.clone()) {
-            Ok(result) => {
-                prop_assert!(!result.factual_support().is_empty());
-                prop_assert!(!result.legal_support().is_empty());
-            }
-            Err(EvaluationError::TooManyFactualContext) => {
-                prop_assert!(factual.len() > MAX_FACTUAL_SUPPORT);
-            }
-            Err(EvaluationError::TooManyLegalContext) => {
-                prop_assert!(factual.len() <= MAX_FACTUAL_SUPPORT);
-                prop_assert!(legal.len() > MAX_LEGAL_SUPPORT);
-            }
-            Err(EvaluationError::MissingFactualContext) => prop_assert!(factual.is_empty()),
-            Err(EvaluationError::MissingLegalContext) => {
-                prop_assert!(!factual.is_empty());
-                prop_assert!(legal.is_empty());
-            }
-            Err(other) => prop_assert!(false, "unexpected error: {:?}", other),
-        }
+        let _ = (factual, legal);
+        prop_assert_eq!(
+            Contraindicated::try_new(Vec::new(), Vec::new()).unwrap_err(),
+            EvaluationError::RelationalEvidenceRequired
+        );
     }
 }

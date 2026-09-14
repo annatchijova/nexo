@@ -28,6 +28,7 @@ the external legal act.
 - **Evidence is not inference.** An extracted email date, a user declaration, and a system interpretation remain different kinds of claim.
 - **Explanations are deterministic projections.** NEXO has no model component. An explanation is deterministic citation rendering from an authorized graph projection: replaceable, regenerable, and unable to add support, change an action state, or invent a right.
 - **Unsupported actions fail closed.** A missing mandatory requirement cannot become `AVAILABLE`.
+- **Negative results are relational.** `ConflictingLegalClaims` and `Contraindicated` cannot be constructed through vector-only inputs; every supported path carries a typed witness produced by the policy engine.
 - **Integrity has a purpose.** Original artifacts, manifests, exports, policy bundles, and selected audit events are sealed when identity or historical alteration matters. Deterministic explanation text is not made authoritative by hashing it.
 - **A verifier is independent.** The future verification CLI must not import the application server or require its database.
 
@@ -52,7 +53,7 @@ The planned boundary is Rust for the domain, policy, integrity protocol, API, an
 
 1. Protocol foundation — typed identifiers, canonical serialization, explicit versions.
 2. Evidence graph — artifacts, observations, assertions, derived facts, and inferences.
-3. Policy engine — source-backed normative claims and jurisdictional evaluation.
+3. Policy engine — source-backed normative claims, jurisdictional evaluation, and versioned rule-match records.
 4. Application layer — commands, transactions, authorization, persistence, and exports.
 5. Interface — deterministic explanation of already-authorized support, never decision-making.
 
@@ -70,7 +71,7 @@ There is no “happy-path-only” milestone. Each layer must state its threat mo
 
 ## Status
 
-Stage 0: architecture, integrity boundaries, sandbox boundary, and development protocol are established. No legal policy claim or legal guidance is implemented yet.
+Stage 0 foundation is complete. The project is in Round 014 integration: the evidence graph, policy bundle boundaries, jurisdictional evaluator, and relational negative evidence are implemented and adversarially tested. Argentina and United States policy semantics remain bundle-specific; NEXO does not claim universal legal correctness or provide legal advice.
 
 ## License
 

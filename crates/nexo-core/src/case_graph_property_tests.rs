@@ -24,8 +24,8 @@ use proptest::prelude::*;
 use crate::{
     ActorId, ArtifactId, ArtifactNode, CaseGraph, CaseGraphError, CaseNode, ConfidenceBound,
     ConfirmationState, DerivedFactNode, DigestId, InferenceNode, IngestionRecordId, NodeId,
-    NodeKind, NonEmptyText, ObservationNode, ProvenanceId, ToolId, ToolVersion, UtcInstant,
-    UserAssertionNode,
+    NodeKind, NonEmptyText, ObservationNode, ProvenanceId, ToolId, ToolVersion, UserAssertionNode,
+    UtcInstant,
 };
 
 #[derive(Clone, Debug)]
@@ -165,12 +165,9 @@ fn execute_plan(plan: &[Step]) -> (CaseGraph, Vec<(NodeId, NodeKind)>) {
                     .iter()
                     .map(|index| known[index % known.len()])
                     .collect();
-                let inference = InferenceNode::try_new(
-                    inputs,
-                    tool_version(counter),
-                    ConfidenceBound::Medium,
-                )
-                .expect("bounded");
+                let inference =
+                    InferenceNode::try_new(inputs, tool_version(counter), ConfidenceBound::Medium)
+                        .expect("bounded");
                 let node_id = graph
                     .insert(CaseNode::Inference(inference))
                     .expect("every input is an inserted node");

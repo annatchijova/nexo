@@ -9,9 +9,8 @@ use core::num::NonZeroU64;
 use crate::{
     ActorId, ArtifactId, ArtifactNode, CaseGraph, CaseGraphError, CaseNode, CaseNodeError,
     ConfidenceBound, ConfirmationState, DerivedFactNode, DigestId, InferenceNode,
-    IngestionRecordId, MAX_DERIVATION_INPUTS, MAX_INFERENCE_INPUTS, NodeId, NodeKind,
-    NonEmptyText, ObservationNode, ProvenanceId, TextError, ToolId, ToolVersion, UtcInstant,
-    UserAssertionNode,
+    IngestionRecordId, MAX_DERIVATION_INPUTS, MAX_INFERENCE_INPUTS, NodeId, NodeKind, NonEmptyText,
+    ObservationNode, ProvenanceId, TextError, ToolId, ToolVersion, UserAssertionNode, UtcInstant,
 };
 
 fn id(value: u64) -> NodeId {
@@ -75,7 +74,9 @@ fn inserts_assign_sequential_ids_starting_at_one() {
         .insert(CaseNode::Artifact(artifact_node()))
         .expect("artifact payload is always valid");
     let second = graph
-        .insert(CaseNode::UserAssertion(assertion(ConfirmationState::Confirmed)))
+        .insert(CaseNode::UserAssertion(assertion(
+            ConfirmationState::Confirmed,
+        )))
         .expect("assertion payload is always valid");
 
     assert_eq!(first, id(1));
@@ -95,7 +96,9 @@ fn observation_rejects_a_non_artifact_target() {
         .insert(CaseNode::Artifact(artifact_node()))
         .expect("artifact payload is always valid");
     let assertion_id = graph
-        .insert(CaseNode::UserAssertion(assertion(ConfirmationState::Unconfirmed)))
+        .insert(CaseNode::UserAssertion(assertion(
+            ConfirmationState::Unconfirmed,
+        )))
         .expect("assertion payload is always valid");
 
     let result = graph.insert(CaseNode::Observation(observation(assertion_id)));
@@ -144,7 +147,10 @@ fn derivation_rejects_an_inference_input() {
 
     let result = graph.insert(CaseNode::DerivedFact(derived(vec![interpretation])));
 
-    assert_eq!(result.unwrap_err(), CaseGraphError::InferenceInDerivationInputs);
+    assert_eq!(
+        result.unwrap_err(),
+        CaseGraphError::InferenceInDerivationInputs
+    );
 }
 
 /// Invariant: derivations accept every factual-support kind, including other
@@ -156,7 +162,9 @@ fn derivation_accepts_mixed_factual_support_inputs() {
         .insert(CaseNode::Artifact(artifact_node()))
         .expect("artifact payload is always valid");
     let assertion_id = graph
-        .insert(CaseNode::UserAssertion(assertion(ConfirmationState::Confirmed)))
+        .insert(CaseNode::UserAssertion(assertion(
+            ConfirmationState::Confirmed,
+        )))
         .expect("assertion payload is always valid");
     let observation_id = graph
         .insert(CaseNode::Observation(observation(artifact)))

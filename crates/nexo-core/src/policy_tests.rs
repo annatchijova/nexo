@@ -1,8 +1,7 @@
 use crate::{
-    AcquisitionChannel, ArtifactId, AuthorityKind, CivilDate, DigestId,
-    JurisdictionCode, NodeId, NormativeClaimId, NormativeSource, NormativeSourceId, PolicyBundle,
-    PolicyBundleError, PolicyBundleId, PolicyBundleSet, PolicyBundleSetError, PolicySchemaVersion,
-    PolicySelection,
+    AcquisitionChannel, ArtifactId, AuthorityKind, CivilDate, DigestId, JurisdictionCode, NodeId,
+    NormativeClaimId, NormativeSource, NormativeSourceId, PolicyBundle, PolicyBundleError,
+    PolicyBundleId, PolicyBundleSet, PolicyBundleSetError, PolicySchemaVersion, PolicySelection,
     PolicyVersion, ProvenanceId, SourcePolicy, SourcePolicyError, UtcInstant, ValidityInterval,
     VerifiedCaptureAttestation,
 };
@@ -204,10 +203,7 @@ fn bundles_reject_duplicate_claims_and_unknown_schema() {
         common.4.clone(),
         unsafe {
             VerifiedCaptureAttestation::from_verified_capture(
-                common.5,
-                common.6,
-                common.7,
-                common.8,
+                common.5, common.6, common.7, common.8,
             )
         },
     );

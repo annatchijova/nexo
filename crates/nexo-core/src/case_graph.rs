@@ -183,7 +183,11 @@ pub struct UserAssertionNode {
 }
 
 impl UserAssertionNode {
-    pub const fn new(actor: ActorId, recorded_at: UtcInstant, confirmation: ConfirmationState) -> Self {
+    pub const fn new(
+        actor: ActorId,
+        recorded_at: UtcInstant,
+        confirmation: ConfirmationState,
+    ) -> Self {
         Self {
             actor,
             recorded_at,
@@ -452,8 +456,8 @@ impl CaseGraph {
     }
 
     fn next_id(&self) -> NodeId {
-        let value = NonZeroU64::new(self.nodes.len() as u64 + 1)
-            .expect("graph length cannot exhaust u64");
+        let value =
+            NonZeroU64::new(self.nodes.len() as u64 + 1).expect("graph length cannot exhaust u64");
         NodeId::new(value)
     }
 

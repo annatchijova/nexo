@@ -6,6 +6,10 @@
 
 use core::num::NonZeroU64;
 
+mod case_graph;
+
+pub use case_graph::*;
+
 /// Maximum references retained in each support collection for one action.
 /// A future adapter must enforce lower byte/body limits before allocating its
 /// decoded input; these limits bound retained domain state.
@@ -775,3 +779,9 @@ mod time_tests;
 
 #[cfg(test)]
 mod normative_tests;
+
+#[cfg(test)]
+mod case_graph_tests;
+
+#[cfg(test)]
+mod case_graph_property_tests;

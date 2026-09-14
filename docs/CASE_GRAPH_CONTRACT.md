@@ -122,7 +122,7 @@ never an `Observation`.
 
 | Condition | Required construction result |
 | --- | --- |
-| Any required provenance field missing | Typed error naming the absent field. |
+| Any required provenance field missing | Unrepresentable: payload fields are required constructor arguments, so no node can be assembled without them. Absence is a compile-time guarantee, not a runtime error. |
 | Reference to a nonexistent node | `DanglingReference` error. |
 | Reference to a node of the wrong kind | `ReferenceKindMismatch` error. |
 | `DerivedFact` with an `Inference` input | `InferenceInDerivationInputs` error. |

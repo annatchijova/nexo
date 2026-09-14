@@ -9,9 +9,9 @@
 //!
 //! What this proves: for arbitrary plans within the exercised shapes, every
 //! inserted node keeps resolvable and kind-compatible references, references
-//! past the last assigned id always fail closed as dangling, and a
-//! derivation never accepts an inference input, whatever the surrounding
-//! graph contains.
+//! past the last assigned id always fail closed as dangling, an observation
+//! never targets a non-artifact node, and a derivation never accepts an
+//! inference input, whatever the surrounding graph contains.
 //!
 //! What this does not prove: payload-level bounds (pinned by
 //! `case_graph_tests`), evaluation semantics (no evaluator exists yet), or
@@ -254,6 +254,33 @@ proptest! {
         prop_assert_eq!(
             graph.insert(CaseNode::Inference(inference)),
             Err(CaseGraphError::DanglingReference)
+        );
+    }
+
+    /// ∀ graph: an observation aimed at an existing non-artifact node fails
+    /// closed as a kind mismatch, whatever the surrounding graph contains.
+    /// Pins the observation kind guard of `CaseGraph::insert`, which the
+    /// dangling-reference property above cannot reach.
+    #[test]
+    fn observations_never_target_non_artifacts(
+        plan in prop::collection::vec(step_strategy(), 0..=16),
+    ) {
+        let (mut graph, _) = execute_plan(&plan);
+
+        // A fresh assertion is admitted into every graph and then serves as
+        // a guaranteed non-artifact probe target.
+        let assertion_id = graph
+            .insert(CaseNode::UserAssertion(assertion_node()))
+            .expect("assertion payload is always valid");
+        let probe = ObservationNode::new(
+            ArtifactId::new(assertion_id),
+            tool_version(920),
+            locator(),
+            UtcInstant::from_unix_seconds(0),
+        );
+        prop_assert_eq!(
+            graph.insert(CaseNode::Observation(probe)),
+            Err(CaseGraphError::ReferenceKindMismatch)
         );
     }
 

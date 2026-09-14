@@ -18,8 +18,11 @@ keeping every provenance field formally populated.
 
 ## Decision
 
-`DerivedFact` inputs are restricted to factual-support kinds. Constructing a
-derivation with an `Inference` input is a typed construction error.
+`DerivedFact` inputs are restricted to factual-support kinds. Inserting a
+derivation with an `Inference` input fails closed with the typed error
+`InferenceInDerivationInputs` at graph insertion, the boundary where
+referenced nodes exist to be checked; payload constructors verify presence
+and bounds only.
 `Inference` inputs remain unrestricted over node kinds: interpretations may
 build on interpretations, and the result stays an interpretation because
 `Inference` has no path into `FactualSupport`.

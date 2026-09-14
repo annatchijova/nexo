@@ -7,8 +7,10 @@
 use core::num::NonZeroU64;
 
 mod case_graph;
+mod policy;
 
 pub use case_graph::*;
+pub use policy::*;
 
 /// Maximum references retained in each support collection for one action.
 /// A future adapter must enforce lower byte/body limits before allocating its
@@ -797,3 +799,6 @@ mod case_graph_tests;
 
 #[cfg(test)]
 mod case_graph_property_tests;
+
+#[cfg(test)]
+mod policy_tests;

@@ -59,7 +59,7 @@ explain a case fact: `Artifact`, `Observation`, `UserAssertion`,
 `DerivedFact`. `Inference` is a graph node and nothing more:
 
 - `Inference` is not a `FactualSupport` variant and never becomes one by
-  being referenced, displayed, or narrated.
+  being referenced or displayed.
 - `DerivedFact` inputs are restricted to factual-support kinds. A derivation
   that consumed an interpretation would launder it into a fact; the
   transformation's reproducibility cannot repair its input's epistemic
@@ -135,10 +135,11 @@ placeholder provenance value, or a successful construction with warnings.
 
 ## Prohibited substitutions
 
-Prompt text, agent configuration, model output, user preference, and workflow
-playbook may not create or alter graph nodes. A model may narrate an
-already-authorized graph projection; it has no write path into this contract.
-A node exists only through the validated constructors defined here.
+Prompt text, agent configuration, user preference, and workflow
+playbook may not create or alter graph nodes. Explanation is a deterministic
+rendering of an already-authorized graph projection; it has no write path
+into this contract. A node exists only through the validated constructors
+defined here.
 
 ## Relationship to evaluation
 

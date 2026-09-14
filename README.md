@@ -25,10 +25,10 @@ the external legal act.
 
 ## Core principles
 
-- **Evidence is not inference.** An extracted email date, a user declaration, and a model hypothesis remain different kinds of claim.
-- **The model narrates; it has no authority.** It may produce a replaceable explanation from an authorized graph projection. It cannot add support, change an action state, or invent a right.
+- **Evidence is not inference.** An extracted email date, a user declaration, and a system interpretation remain different kinds of claim.
+- **Explanations are deterministic projections.** NEXO has no model component. An explanation is deterministic citation rendering from an authorized graph projection: replaceable, regenerable, and unable to add support, change an action state, or invent a right.
 - **Unsupported actions fail closed.** A missing mandatory requirement cannot become `AVAILABLE`.
-- **Integrity has a purpose.** Original artifacts, manifests, exports, policy bundles, and selected audit events are sealed when identity or historical alteration matters. Generated prose is not made authoritative by hashing it.
+- **Integrity has a purpose.** Original artifacts, manifests, exports, policy bundles, and selected audit events are sealed when identity or historical alteration matters. Deterministic explanation text is not made authoritative by hashing it.
 - **A verifier is independent.** The future verification CLI must not import the application server or require its database.
 
 ## Architecture
@@ -54,7 +54,7 @@ The planned boundary is Rust for the domain, policy, integrity protocol, API, an
 2. Evidence graph — artifacts, observations, assertions, derived facts, and inferences.
 3. Policy engine — source-backed normative claims and jurisdictional evaluation.
 4. Application layer — commands, transactions, authorization, persistence, and exports.
-5. Interface and narration — explanation of already-authorized support, never decision-making.
+5. Interface — deterministic explanation of already-authorized support, never decision-making.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md).
 

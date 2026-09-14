@@ -26,7 +26,7 @@ its externally retained receipt.
 
 - Encryption, signatures, key management, persistence, clocks, and network I/O.
 - Parsing artifacts or policy documents.
-- Treating an LLM explanation as seal-worthy authority.
+- Treating explanatory text as seal-worthy authority.
 - Claiming that a hash chain alone prevents database-history rewrites.
 
 ## Falsifiers

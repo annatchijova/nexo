@@ -110,7 +110,6 @@ support by themselves:
 ```text
 prompt
 agent configuration
-model output
 user preference
 workflow playbook
 secondary-source summary without its primary source

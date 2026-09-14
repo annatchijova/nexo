@@ -118,9 +118,12 @@ Web (TypeScript) → API/application (Rust) → domain core (Rust)
 - **Policy:** parses versioned jurisdiction bundles and returns normative claims plus requirements; it does not own case data.
 - **Integrity:** hashes artifacts and manifests; provides optional keyed audit-chain primitives; has no database authority.
 - **Application:** owns transactions, access control, storage capabilities, imports, exports, and asynchronous work.
-- **Adapters:** HTTP API, web UI, extraction adapters, source acquisition, optional LLM narration, and standalone verifier.
+- **Adapters:** HTTP API, web UI, extraction adapters, source acquisition, and standalone verifier.
 
-The API, not the domain core, may call an LLM. It may send only an `ExplanationInput` projection containing already-authorized action state, satisfied/missing requirements, and cited graph node IDs.
+Explanation is deterministic citation rendering computed by the API from an
+authorized graph projection; it cites action state, satisfied and missing
+requirements, and graph node IDs. No model is called, and no generated text
+can feed back into evaluation.
 
 ## Data ownership
 

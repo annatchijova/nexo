@@ -54,8 +54,8 @@ to the person. It has only `SUPPORTED` and `CONDITIONALLY_SUPPORTED` states.
 
 - The UI can explain both a proposed action and a refusal to propose one using
   an auditable graph path.
-- LLM narration can regenerate text from either result without changing its
-  epistemic status.
+- Deterministic explanation rendering can regenerate text from either result
+  without changing its epistemic status.
 - Adding a future negative outcome requires declaring its proof obligation in
   the type system, tests, and policy contract.
 - This core currently records typed IDs, not timestamps or source documents;

@@ -72,19 +72,19 @@ agent works, not just to what it builds.
 These are the project's own non-negotiables (see `docs/SECURITY_MODEL.md`);
 an agent must not casually erode them for convenience.
 
-- **The LLM has no authority (llm-out-of-the-loop).** A model may narrate an
-  already-authorized graph projection. It must never add support, flip an
-  `ActionOption` state, invent a right, or otherwise participate in a
-  decision. If a change routes a model's output into anything that affects
-  state, evaluation, or an action's availability, stop and flag it instead
-  of implementing it.
+- **No model in the product (no-model-in-product).** NEXO contains no LLM
+  component: explanations are deterministic renderings of already-authorized
+  graph projections. Never introduce model calls, model output, or
+  model-generated text into anything that affects state, evaluation, an
+  action's availability, a seal, or a displayed explanation. If a change
+  seems to require a model, stop and flag it instead of implementing it.
 - **Deterministic core, no float in decision paths (deterministic-core).**
   Domain and policy evaluation code (`crates/nexo-core`) stays pure and
   reproducible. Use exact arithmetic where a decision depends on it; floats
   are for display only, never for anything that feeds an `ActionOption`
   state, a seal, or a hash.
 - **Fail closed, never fake a positive (honest-degradation).** Missing
-  provenance, an unmet requirement, a parser failure, or an LLM timeout must
+  provenance, an unmet requirement, or a parser failure must
   produce an explicit non-available/failure state — never a silently
   degraded but positive-looking result. Do not add a fallback that makes a
   failure look like success.
@@ -130,7 +130,8 @@ never as an unqualified "it works."
 - [ ] Cause was verified against the live code, not assumed from a snapshot.
 - [ ] Edit was a surgical, anchored patch, or a deliberate full rewrite for a
       new file only.
-- [ ] No LLM output entered a decision, seal, or evaluation path.
+- [ ] No model or model output was introduced into any decision, seal,
+      evaluation, or explanation path.
 - [ ] No float in a decision/seal path in `nexo-core` or `nexo-integrity`.
 - [ ] Failure/degradation cases produce an explicit non-available state, not
       a silent fallback that looks like success.

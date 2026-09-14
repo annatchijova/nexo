@@ -506,3 +506,6 @@ mod tests;
 
 #[cfg(test)]
 mod evaluation_tests;
+
+#[cfg(test)]
+mod property_tests;

@@ -33,7 +33,25 @@ jobs:
         run: cargo build --workspace --locked
 
       - name: Run tests
-        run: cargo test --workspace --locked
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked 2>&1 | tee /tmp/test.log
+
+      # Log download is not always reachable from every reviewer environment;
+      # failed test names and panic messages must remain visible inline.
+      - name: Surface test failures as annotations
+        if: failure()
+        run: |
+          if [ -f /tmp/test.log ]; then
+            grep -E "^test .* FAILED$" /tmp/test.log | while IFS= read -r line; do
+              printf '::error title=failed test::%s\n' "$line"
+            done
+            awk '/---- .* stdout ----/{flag=1} flag{print} /^test result:/{flag=0}' /tmp/test.log \
+              | head -n 80 | while IFS= read -r line; do
+              printf '::error title=failure detail::%s\n' "$line"
+            done
+          fi
+          exit 1
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings

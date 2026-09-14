@@ -126,6 +126,185 @@ impl NormativeClaimId {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NonEmptyText(String);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextError {
+    Empty,
+}
+impl NonEmptyText {
+    pub fn try_new(value: String) -> Result<Self, TextError> {
+        if value.trim().is_empty() {
+            Err(TextError::Empty)
+        } else {
+            Ok(Self(value))
+        }
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuthorityKind {
+    PrimaryOfficial,
+    OfficialInterpretive,
+    SecondaryAnalysis,
+    Unverified,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AcquisitionChannel {
+    WebFetch,
+    OfficialApi,
+    UserProvided,
+    ResearchConnector,
+    ImportedBundle,
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct NormativeSourceId(NodeId);
+impl NormativeSourceId {
+    pub const fn new(value: NodeId) -> Self {
+        Self(value)
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ArtifactId(NodeId);
+impl ArtifactId {
+    pub const fn new(value: NodeId) -> Self {
+        Self(value)
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DigestId(NodeId);
+impl DigestId {
+    pub const fn new(value: NodeId) -> Self {
+        Self(value)
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ProvenanceId(NodeId);
+impl ProvenanceId {
+    pub const fn new(value: NodeId) -> Self {
+        Self(value)
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NormativeSource {
+    id: NormativeSourceId,
+    authority_kind: AuthorityKind,
+    acquisition_channel: AcquisitionChannel,
+    issuer: NonEmptyText,
+    locator: NonEmptyText,
+    retrieved_at: UtcInstant,
+    captured_artifact: ArtifactId,
+    digest: DigestId,
+    provenance: ProvenanceId,
+}
+impl NormativeSource {
+    // A source capture has nine independent required fields. Keeping them
+    // explicit prevents an optional bag from manufacturing a partial source;
+    // the aggregate constructor is intentionally verbose.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: NormativeSourceId,
+        authority_kind: AuthorityKind,
+        issuer: NonEmptyText,
+        locator: NonEmptyText,
+        acquisition_channel: AcquisitionChannel,
+        retrieved_at: UtcInstant,
+        captured_artifact: ArtifactId,
+        digest: DigestId,
+        provenance: ProvenanceId,
+    ) -> Self {
+        Self {
+            id,
+            authority_kind,
+            issuer,
+            locator,
+            acquisition_channel,
+            retrieved_at,
+            captured_artifact,
+            digest,
+            provenance,
+        }
+    }
+    pub const fn authority_kind(&self) -> AuthorityKind {
+        self.authority_kind
+    }
+    pub const fn acquisition_channel(&self) -> AcquisitionChannel {
+        self.acquisition_channel
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SupportRole {
+    Primary,
+    Corroborating,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClaimSourceSupport {
+    source: NormativeSourceId,
+    role: SupportRole,
+}
+impl ClaimSourceSupport {
+    pub const fn new(source: NormativeSourceId, role: SupportRole) -> Self {
+        Self { source, role }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NormativeClaimError {
+    MissingProposition,
+    MissingJurisdiction,
+    MissingSource,
+    TooManySources,
+    DuplicateSource,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NormativeClaim {
+    id: NormativeClaimId,
+    proposition: NonEmptyText,
+    jurisdiction: NonEmptyText,
+    validity: ValidityInterval,
+    policy_bundle: PolicyBundleId,
+    sources: Vec<ClaimSourceSupport>,
+}
+impl NormativeClaim {
+    pub fn try_new(
+        id: NormativeClaimId,
+        proposition: NonEmptyText,
+        jurisdiction: NonEmptyText,
+        validity: ValidityInterval,
+        policy_bundle: PolicyBundleId,
+        sources: Vec<ClaimSourceSupport>,
+    ) -> Result<Self, NormativeClaimError> {
+        if proposition.as_str().is_empty() {
+            return Err(NormativeClaimError::MissingProposition);
+        }
+        if jurisdiction.as_str().is_empty() {
+            return Err(NormativeClaimError::MissingJurisdiction);
+        }
+        if sources.is_empty() {
+            return Err(NormativeClaimError::MissingSource);
+        }
+        if sources.len() > MAX_LEGAL_SUPPORT {
+            return Err(NormativeClaimError::TooManySources);
+        }
+        if has_duplicate(&sources) {
+            return Err(NormativeClaimError::DuplicateSource);
+        }
+        Ok(Self {
+            id,
+            proposition,
+            jurisdiction,
+            validity,
+            policy_bundle,
+            sources,
+        })
+    }
+    pub fn sources(&self) -> &[ClaimSourceSupport] {
+        &self.sources
+    }
+}
+
 /// A required condition which may be satisfied or remain explicitly missing.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequirementId(NodeId);
@@ -593,3 +772,6 @@ mod property_tests;
 
 #[cfg(test)]
 mod time_tests;
+
+#[cfg(test)]
+mod normative_tests;

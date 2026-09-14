@@ -120,8 +120,9 @@ pub enum SourcePolicyError {
 /// A capture whose bytes were verified by an external integrity boundary.
 ///
 /// The fields are private so safe callers cannot manufacture an attestation
-/// from serialized metadata. The bridge is the only intended caller of the
+/// from serialized metadata. The bridge is the intended caller of the
 /// `unsafe` constructor, after recomputing and comparing the capture digest.
+/// Safe callers cannot mint this value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VerifiedCaptureAttestation {
     captured_artifact: ArtifactId,
@@ -138,6 +139,17 @@ impl VerifiedCaptureAttestation {
     ///
     /// The caller must have compared the exact captured bytes with the
     /// expected digest using the integrity boundary immediately beforehand.
+    ///
+    /// ```compile_fail
+    /// # use nexo_core::{ArtifactId, DigestId, NodeId, ProvenanceId, UtcInstant,
+    /// #     VerifiedCaptureAttestation};
+    /// # use core::num::NonZeroU64;
+    /// # let id = || NodeId::new(NonZeroU64::new(1).unwrap());
+    /// let _ = VerifiedCaptureAttestation::from_verified_capture(
+    ///     ArtifactId::new(id()), DigestId::new(id()), ProvenanceId::new(id()),
+    ///     UtcInstant::from_unix_seconds(0),
+    /// );
+    /// ```
     pub unsafe fn from_verified_capture(
         captured_artifact: ArtifactId,
         digest: DigestId,

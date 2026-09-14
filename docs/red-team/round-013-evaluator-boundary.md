@@ -4,7 +4,7 @@
 
 **Date:** 2026-09-14  **Method:** contract-vs-code confrontation + executable
 route probes  
-**Base:** `main` working tree after `4e74d08` and evaluator slice  
+**Base:** `main` working tree after `f3ad59a` and evaluator slice
 **Scope:** `ActionRoute`, `CaseProjection`, `NormativeContext`, and `evaluate`.
 No persistence, HTTP, model, or external-action adapter is in scope.
 
@@ -24,6 +24,8 @@ No persistence, HTTP, model, or external-action adapter is in scope.
 | RT-036 | CONFIRMED BY INDUCTION | Invariant | A current source-complete route yields `SUPPORTED` with non-empty proof. |
 | RT-037 | CONFIRMED BY INDUCTION | Fail-closed behavior | Missing requirements yield `INSUFFICIENT_FACTS`, not an available action. |
 | RT-038 | CONFIRMED BY INDUCTION | Trust boundary | Bundle and claim mismatch yields `OUT_OF_JURISDICTION` or `ABSTAIN`, never `SUPPORTED`. |
+| RT-039 | CONFIRMED BY INDUCTION | Jurisdiction invariant | An `AR` bundle + `AR` route + explicit `US` claim reaches `claim_is_eligible` and returns `ABSTAIN`. |
+| RT-040 | CODE FACT | Capability boundary | `VerifiedCaptureAttestation` is safe-to-hold but can be minted by another crate only through an explicit `unsafe` call. |
 
 ## RT-035 — Jurisdiction mismatch in legal claims
 
@@ -34,9 +36,22 @@ bundle. The evaluator now uses canonical `JurisdictionCode::code()` values and
 rejects mismatches before constructing an action.
 
 The regression `evaluator_rejects_claim_from_another_jurisdiction` executes the
-route/bundle mismatch and observes a typed non-actionable result. The original
-claim-text vector remains a required future fixture with a bundle whose
-jurisdiction matches the route but whose claim text does not.
+exact `AR` bundle + `AR` route + `US` claim case and observes
+`NonActionable::Abstain`. The bundle/route guard is proven separately by
+`evaluator_rejects_route_from_another_jurisdiction`, so the claim-text case
+reaches `claim_is_eligible` rather than failing earlier.
+
+## RT-040 — Attestation minting capability
+
+The public API exposes `unsafe fn from_verified_capture`, so another crate can
+mint an attestation if it explicitly accepts an unsafe block. This means “only
+the bridge can mint” is not a true construction property. The supported claim
+is narrower and tested: safe callers cannot invoke the constructor without an
+unsafe operation, and serialized verification flags are never accepted. The
+trust model therefore treats unsafe bridge code as the integrity boundary; a
+future stronger “bridge-only” property would require moving the bundle factory
+and attestation type into a crate topology where the minting constructor is not
+publicly reachable.
 
 ## RT-036 — Supported route proof obligations
 
@@ -71,5 +86,7 @@ abstention; no optional field can silently downgrade the proof requirement.
 
 The evaluator does not yet model legal-claim conflicts, contraindications, or
 conditional actions as first-class route semantics. Source digest verification
-remains the bridge's responsibility. Case projection authorization and
-persistence transactionality remain application-layer obligations.
+remains the bridge's responsibility. The unsafe attestation constructor is an
+explicit capability boundary, not a proof that only one crate can mint. Case
+projection authorization and persistence transactionality remain
+application-layer obligations.

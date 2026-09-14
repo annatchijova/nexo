@@ -1,4 +1,4 @@
-//! The only supported path from captured bytes to a verified policy attestation.
+//! The supported safe path from captured bytes to a verified policy attestation.
 //!
 //! Serialized `verified` flags are intentionally not accepted. This bridge
 //! recomputes the digest over the exact bytes on every import and only then

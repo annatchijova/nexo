@@ -6,6 +6,12 @@ fn node(value: u64) -> NodeId {
 }
 
 fn fixture() -> (CaseProjection, PolicyBundle, NormativeContext, ActionRoute) {
+    fixture_with_claim_jurisdiction("AR")
+}
+
+fn fixture_with_claim_jurisdiction(
+    claim_jurisdiction: &str,
+) -> (CaseProjection, PolicyBundle, NormativeContext, ActionRoute) {
     let bundle_id = PolicyBundleId::new(node(1));
     let source_id = NormativeSourceId::new(node(2));
     let claim_id = NormativeClaimId::new(node(3));
@@ -14,7 +20,7 @@ fn fixture() -> (CaseProjection, PolicyBundle, NormativeContext, ActionRoute) {
     let claim = NormativeClaim::try_new(
         claim_id,
         NonEmptyText::try_new("access right".into()).unwrap(),
-        NonEmptyText::try_new("AR".into()).unwrap(),
+        NonEmptyText::try_new(claim_jurisdiction.into()).unwrap(),
         validity,
         bundle_id,
         vec![ClaimSourceSupport::new(source_id, SupportRole::Primary)],
@@ -107,6 +113,23 @@ fn evaluator_returns_insufficient_facts_for_missing_requirement() {
 
 #[test]
 fn evaluator_rejects_claim_from_another_jurisdiction() {
+    let (projection, bundle, context, route) = fixture_with_claim_jurisdiction("US");
+    assert_eq!(route.jurisdiction(), JurisdictionCode::Argentina);
+    assert_eq!(bundle.jurisdiction(), JurisdictionCode::Argentina);
+    assert!(matches!(
+        evaluate(
+            &projection,
+            &bundle,
+            &context,
+            &route,
+            CivilDate::try_new(2026, 2, 1).unwrap()
+        ),
+        ActionEvaluation::NonActionable(NonActionable::Abstain(_))
+    ));
+}
+
+#[test]
+fn evaluator_rejects_route_from_another_jurisdiction() {
     let (projection, bundle, context, _) = fixture();
     let route = ActionRoute::try_new(
         node(10),

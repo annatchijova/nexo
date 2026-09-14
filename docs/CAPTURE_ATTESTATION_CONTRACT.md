@@ -12,8 +12,8 @@ attestation to `PolicyBundle`.
 The bridge receives untrusted serialized bundle metadata and captured bytes.
 It may read the object store and call `nexo-integrity`; `nexo-core` may not.
 The bridge cannot change the expected digest, artifact identity, or provenance
-after verification. A caller-controlled `CaptureStatus::Verified` field is
-never accepted as evidence by itself.
+after verification. A caller-controlled verification flag is never accepted as
+evidence by itself.
 
 ## Verification sequence
 
@@ -38,14 +38,15 @@ or warning-only path.
 
 `VerifiedCaptureAttestation` is an application-layer value containing the
 verified artifact/digest/provenance references and the verification event. It
-is not deserialized from user input. It is created only by the bridge after a
-successful integrity check and consumed immediately to construct the immutable
-bundle.
+is not deserialized from user input. The bridge is the intended minting path
+after a successful integrity check and consumes it immediately to construct the
+immutable bundle. Because the core must remain dependency-free, another crate
+can still invoke the explicitly `unsafe` constructor; that caller assumes the
+same verification obligation and is outside the safe-caller guarantee.
 
 `VerifiedCaptureAttestation` is the constructor capability for the
-dependency-free prototype. Its fields are private; the bridge is the only
-production caller that should invoke the documented `unsafe` minting boundary.
-Untrusted serialized status is ignored entirely.
+dependency-free prototype. Its fields are private, and safe callers cannot
+forge it. Untrusted serialized status is ignored entirely.
 
 ## Replay and identity
 

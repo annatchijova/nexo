@@ -6,7 +6,7 @@ Accepted for the first `nexo-core` layer.
 
 ## Threat model
 
-An API client, an extractor, a policy bundle, or a future LLM may attempt to
+An API client, an extractor, or a policy bundle may attempt to
 cause an action to appear available without adequate evidence or legal support.
 An implementation bug may also accidentally treat a missing mandatory
 requirement as a recommendation.

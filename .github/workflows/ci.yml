@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: Build, test, and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      # The toolchain (and clippy component) is pinned by rust-toolchain.toml;
+      # `rustup show` installs it if the runner does not have it yet.
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show
+          rustup component add clippy
+          rustc --version
+          cargo --version
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Run tests
+        run: |
+          set -o pipefail
+          cargo test --workspace --locked 2>&1 | tee /tmp/test.log
+
+      # Log download is not always reachable from every reviewer environment;
+      # the failure cause must remain visible inline and in the pull request.
+      - name: Surface test failures
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f /tmp/test.log ]; then
+            # CARGO_TERM_COLOR=always interleaves ANSI escapes; strip them
+            # before pattern matching.
+            sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/test.log > /tmp/test.plain
+            grep -E "^error(\[|:)" /tmp/test.plain | head -n 30 | while IFS= read -r line; do
+              printf '::error title=compile error::%s\n' "$line"
+            done
+            grep -E "^test .* FAILED$" /tmp/test.plain | while IFS= read -r line; do
+              printf '::error title=failed test::%s\n' "$line"
+            done
+            grep -E "^test result:" /tmp/test.plain | while IFS= read -r line; do
+              printf '::error title=test summary::%s\n' "$line"
+            done
+            awk '/---- .* stdout ----/{flag=1} flag{print} /^test result:/{flag=0}' /tmp/test.plain \
+              | head -n 80 | while IFS= read -r line; do
+              printf '::error title=failure detail::%s\n' "$line"
+            done
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            {
+              echo "Automated CI failure diagnostics for commit $(git rev-parse HEAD)."
+              echo ""
+              echo '```text'
+              if [ -f /tmp/test.plain ]; then
+                tail -n 120 /tmp/test.plain
+              else
+                echo "no test log captured; an earlier step failed"
+              fi
+              echo '```'
+            } > /tmp/failure-summary.md
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --repo "$GITHUB_REPOSITORY" --body-file /tmp/failure-summary.md || true
+          fi
+          exit 1
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings

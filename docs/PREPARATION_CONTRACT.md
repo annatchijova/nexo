@@ -60,8 +60,9 @@ confirmed by that actor, for example an `Artifact` receipt or a
 
 - No recipient address, endpoint, credential, or transport capability belongs
   to `Preparation`.
-- An LLM may assist with explanatory prose only; it cannot select a recipient,
-  approve a draft, or trigger delivery.
+- No model or generator participates in preparation: explanatory text is
+  deterministic rendering, and nothing outside this contract can select a
+  recipient, approve a draft, or trigger delivery.
 - A scheduler may invalidate stale preparations; it cannot deliver them.
 - Re-exporting an unchanged artifact is idempotent. Regenerating after an input
   or policy change creates a new preparation with a new manifest digest.

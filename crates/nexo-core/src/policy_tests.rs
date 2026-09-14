@@ -1,8 +1,9 @@
 use crate::{
     AcquisitionChannel, ArtifactId, AuthorityKind, CaptureStatus, CivilDate, DigestId,
-    JurisdictionCode, NodeId, NormativeClaimId, PolicyBundle, PolicyBundleError, PolicyBundleId,
-    PolicyBundleSet, PolicyBundleSetError, PolicySchemaVersion, PolicySelection, PolicyVersion,
-    ProvenanceId, SourcePolicy, SourcePolicyError, UtcInstant, ValidityInterval,
+    JurisdictionCode, NodeId, NormativeClaimId, NormativeSource, NormativeSourceId, PolicyBundle,
+    PolicyBundleError, PolicyBundleId, PolicyBundleSet, PolicyBundleSetError, PolicySchemaVersion,
+    PolicySelection, PolicyVersion, ProvenanceId, SourcePolicy, SourcePolicyError, UtcInstant,
+    ValidityInterval,
 };
 use core::num::NonZeroU64;
 
@@ -157,6 +158,35 @@ fn source_policy_rejects_duplicates_and_empty_dimensions() {
         .unwrap_err(),
         SourcePolicyError::DuplicateEntry
     );
+    assert_eq!(
+        SourcePolicy::try_new(
+            vec![AuthorityKind::Unverified],
+            vec![AcquisitionChannel::OfficialApi],
+        )
+        .unwrap_err(),
+        SourcePolicyError::UnverifiedAuthority
+    );
+}
+
+#[test]
+fn bundle_source_eligibility_keeps_authority_and_channel_independent() {
+    let source = NormativeSource::new(
+        NormativeSourceId::new(node(1)),
+        AuthorityKind::PrimaryOfficial,
+        crate::NonEmptyText::try_new("Issuer".into()).unwrap(),
+        crate::NonEmptyText::try_new("https://example.test".into()).unwrap(),
+        AcquisitionChannel::OfficialApi,
+        UtcInstant::from_unix_seconds(0),
+        ArtifactId::new(node(2)),
+        DigestId::new(node(3)),
+        ProvenanceId::new(node(4)),
+    );
+    let policy = SourcePolicy::try_new(
+        vec![AuthorityKind::PrimaryOfficial],
+        vec![AcquisitionChannel::OfficialApi],
+    )
+    .unwrap();
+    assert!(policy.source_is_eligible(&source));
 }
 
 #[test]

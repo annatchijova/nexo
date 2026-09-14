@@ -2,7 +2,8 @@
 
 use crate::{
     AcquisitionChannel, ArtifactId, AuthorityKind, CivilDate, DigestId, MAX_LEGAL_SUPPORT,
-    NonEmptyText, NormativeClaimId, PolicyBundleId, ProvenanceId, UtcInstant, ValidityInterval,
+    NonEmptyText, NormativeClaimId, NormativeSource, PolicyBundleId, ProvenanceId, UtcInstant,
+    ValidityInterval,
 };
 
 pub const MAX_POLICY_BUNDLES: usize = 64;
@@ -73,6 +74,9 @@ impl SourcePolicy {
         if has_duplicate(&authorities) || has_duplicate(&channels) {
             return Err(SourcePolicyError::DuplicateEntry);
         }
+        if authorities.contains(&AuthorityKind::Unverified) {
+            return Err(SourcePolicyError::UnverifiedAuthority);
+        }
         Ok(Self {
             authorities,
             channels,
@@ -90,6 +94,10 @@ impl SourcePolicy {
     pub fn channels(&self) -> &[AcquisitionChannel] {
         &self.channels
     }
+
+    pub fn source_is_eligible(&self, source: &NormativeSource) -> bool {
+        self.allows(source.authority_kind(), source.acquisition_channel())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,6 +105,7 @@ pub enum SourcePolicyError {
     Empty,
     TooManyEntries,
     DuplicateEntry,
+    UnverifiedAuthority,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -192,6 +201,10 @@ impl PolicyBundle {
 
     pub fn source_policy(&self) -> &SourcePolicy {
         &self.source_policy
+    }
+
+    pub fn source_is_eligible(&self, source: &NormativeSource) -> bool {
+        self.source_policy.source_is_eligible(source)
     }
 
     pub const fn captured_artifact(&self) -> ArtifactId {

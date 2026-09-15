@@ -18,14 +18,44 @@ fn generator() -> ToolVersion {
 }
 
 fn plan() -> PreparationPlan {
-    PreparationPlan::new(
-        node(1),
+    let action = ActionOption::try_new(
+        ActionStatus::Supported,
+        vec![FactualSupport::UserAssertion(node(8))],
+        vec![NormativeClaimId::new(node(9))],
+        vec![],
+    )
+    .unwrap();
+    let identified = action.with_identity(node(1));
+    let snapshot = VerifiedPreparationSnapshot::from_verified_evaluation(
+        identified,
         node(2),
         digest(3),
         digest(4),
-        PreparationKind::DraftRequest,
-        generator(),
+    );
+    PreparationPlan::from_verified_snapshot(&snapshot, PreparationKind::DraftRequest, generator())
+        .unwrap()
+}
+
+#[test]
+fn unsupported_or_conditional_actions_cannot_authorize_a_plan() {
+    let conditional = ActionOption::try_new(
+        ActionStatus::ConditionallySupported,
+        vec![FactualSupport::UserAssertion(node(8))],
+        vec![NormativeClaimId::new(node(9))],
+        vec![RequirementId::new(node(10))],
     )
+    .unwrap();
+    let identified = conditional.with_identity(node(1));
+    let snapshot = VerifiedPreparationSnapshot::from_verified_evaluation(
+        identified,
+        node(2),
+        digest(3),
+        digest(4),
+    );
+    assert_eq!(
+        PreparationPlan::from_verified_snapshot(&snapshot, PreparationKind::Export, generator()),
+        Err(PreparationPlanError::ActionNotAvailable)
+    );
 }
 
 #[test]

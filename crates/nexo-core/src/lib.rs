@@ -10,11 +10,13 @@ mod case_graph;
 mod evaluator;
 mod negative_evidence;
 mod policy;
+mod preparation;
 
 pub use case_graph::*;
 pub use evaluator::*;
 pub use negative_evidence::*;
 pub use policy::*;
+pub use preparation::*;
 
 /// Maximum references retained in each support collection for one action.
 /// A future adapter must enforce lower byte/body limits before allocating its
@@ -853,6 +855,9 @@ mod evaluator_tests;
 
 #[cfg(test)]
 mod negative_evidence_tests;
+
+#[cfg(test)]
+mod preparation_tests;
 
 #[cfg(test)]
 mod policy_tests;

@@ -1,10 +1,12 @@
 //! Pure, fail-closed evaluation of a rights route against a selected bundle.
 
 use crate::{
-    Abstention, ActionEvaluation, ActionOption, ActionStatus, FactualSupport, InsufficientFacts,
-    JurisdictionCode, JurisdictionEvidenceId, MAX_FACTUAL_SUPPORT, MAX_LEGAL_SUPPORT,
-    MAX_UNMET_REQUIREMENTS, NormativeClaim, NormativeClaimId, NormativeSource, OutOfJurisdiction,
-    PolicyBundle, PolicyFreshnessEvidenceId, PolicyNotCurrent, RequirementId, ValidityInterval,
+    Abstention, ActionEvaluation, ActionOption, ActionStatus, ConflictWitness,
+    ConflictingLegalClaims, Contraindicated, ContraindicationEvidence, FactualSupport,
+    InsufficientFacts, JurisdictionCode, JurisdictionEvidenceId, MAX_FACTUAL_SUPPORT,
+    MAX_LEGAL_SUPPORT, MAX_UNMET_REQUIREMENTS, NormativeClaim, NormativeClaimId, NormativeSource,
+    OutOfJurisdiction, PolicyBundle, PolicyFreshnessEvidenceId, PolicyNotCurrent, PolicyRuleEngine,
+    RequirementId, ValidityInterval,
 };
 
 pub const MAX_ROUTE_REQUIREMENTS: usize = MAX_UNMET_REQUIREMENTS;
@@ -170,6 +172,19 @@ pub fn evaluate(
     route: &ActionRoute,
     reference_date: crate::CivilDate,
 ) -> ActionEvaluation {
+    evaluate_with_negative_evidence(projection, bundle, context, route, reference_date, None)
+}
+
+/// Evaluate a route and, when supplied, apply deterministic conflict and
+/// contraindication relations after all legal eligibility gates pass.
+pub fn evaluate_with_negative_evidence(
+    projection: &CaseProjection,
+    bundle: &PolicyBundle,
+    context: &NormativeContext,
+    route: &ActionRoute,
+    reference_date: crate::CivilDate,
+    engine: Option<&PolicyRuleEngine>,
+) -> ActionEvaluation {
     if bundle.jurisdiction() != route.jurisdiction() {
         return ActionEvaluation::NonActionable(NonActionable::OutOfJurisdiction(
             OutOfJurisdiction::try_new(projection.jurisdiction_evidence, bundle.id())
@@ -190,6 +205,45 @@ pub fn evaluate(
             Abstention::no_authoritative_legal_source(projection.factual_support.clone())
                 .expect("projection guarantees factual support"),
         ));
+    }
+    if let Some(engine) = engine {
+        for (index, left) in route.required_claims().iter().enumerate() {
+            for right in route.required_claims().iter().skip(index + 1) {
+                let Ok(rule_match) = engine.match_conflict(*left, *right) else {
+                    continue;
+                };
+                if rule_match.record().bundle() != bundle.id() {
+                    return abstain_for_projection(projection);
+                }
+                let witness = ConflictWitness::from_rule_match(*left, *right, rule_match)
+                    .expect("engine match names the requested pair");
+                let conflict = ConflictingLegalClaims::from_witnesses(
+                    projection.factual_support.clone(),
+                    vec![witness],
+                )
+                .expect("projection and witness satisfy relational invariants");
+                return ActionEvaluation::NonActionable(NonActionable::Abstain(
+                    Abstention::ConflictingLegalClaims(conflict),
+                ));
+            }
+        }
+        for factual in &projection.factual_support {
+            for claim in route.required_claims() {
+                for trigger in route.mandatory_requirements() {
+                    let Ok(rule_match) = engine.match_contraindication(*factual, *claim, *trigger)
+                    else {
+                        continue;
+                    };
+                    if rule_match.record().bundle() != bundle.id() {
+                        return abstain_for_projection(projection);
+                    }
+                    let evidence = ContraindicationEvidence::from_rule_match(rule_match);
+                    let result = Contraindicated::from_evidence(vec![evidence])
+                        .expect("engine evidence satisfies relational invariants");
+                    return ActionEvaluation::NonActionable(NonActionable::Contraindicated(result));
+                }
+            }
+        }
     }
     let missing: Vec<RequirementId> = route
         .mandatory_requirements()
@@ -212,6 +266,13 @@ pub fn evaluate(
         )
         .expect("route and projection satisfy ActionOption invariants"),
     )
+}
+
+fn abstain_for_projection(projection: &CaseProjection) -> ActionEvaluation {
+    ActionEvaluation::NonActionable(NonActionable::Abstain(
+        Abstention::no_authoritative_legal_source(projection.factual_support.clone())
+            .expect("projection guarantees factual support"),
+    ))
 }
 
 use crate::NonActionable;

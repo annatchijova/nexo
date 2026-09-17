@@ -213,6 +213,40 @@ fn evaluator_emits_conflict_only_from_engine_relation() {
 }
 
 #[test]
+fn evaluator_rejects_rule_match_from_stale_bundle_version() {
+    let (projection, bundle, context, _) = fixture();
+    let left = NormativeClaimId::new(node(3));
+    let right = NormativeClaimId::new(node(15));
+    let route = ActionRoute::try_new(
+        node(10),
+        JurisdictionCode::Argentina,
+        vec![left, right],
+        vec![],
+    )
+    .unwrap();
+    let engine = PolicyRuleEngine::new(
+        PolicyRuleEvaluationRecord::new(
+            bundle.id(),
+            PolicyVersion::try_new("v0".into()).unwrap(),
+            PolicyRuleId::new(node(20)),
+        ),
+        vec![(left, right)],
+        vec![],
+    );
+    assert!(matches!(
+        evaluate_with_negative_evidence(
+            &projection,
+            &bundle,
+            &context,
+            &route,
+            CivilDate::try_new(2026, 2, 1).unwrap(),
+            Some(&engine),
+        ),
+        ActionEvaluation::NonActionable(NonActionable::Abstain(_))
+    ));
+}
+
+#[test]
 fn evaluator_conflict_precedes_contraindication_deterministically() {
     let (projection, bundle, context, _) = fixture();
     let left = NormativeClaimId::new(node(3));

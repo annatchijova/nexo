@@ -212,7 +212,10 @@ pub fn evaluate_with_negative_evidence(
                 let Ok(rule_match) = engine.match_conflict(*left, *right) else {
                     continue;
                 };
-                if rule_match.record().bundle() != bundle.id() {
+                if rule_match.record().bundle() != bundle.id()
+                    || rule_match.record().bundle_version().as_str()
+                        != bundle.policy_version().as_str()
+                {
                     return abstain_for_projection(projection);
                 }
                 let witness = ConflictWitness::from_rule_match(*left, *right, rule_match)
@@ -234,7 +237,10 @@ pub fn evaluate_with_negative_evidence(
                     else {
                         continue;
                     };
-                    if rule_match.record().bundle() != bundle.id() {
+                    if rule_match.record().bundle() != bundle.id()
+                        || rule_match.record().bundle_version().as_str()
+                            != bundle.policy_version().as_str()
+                    {
                         return abstain_for_projection(projection);
                     }
                     let evidence = ContraindicationEvidence::from_rule_match(rule_match);

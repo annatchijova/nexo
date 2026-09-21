@@ -377,6 +377,49 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .unwrap();
     tx.commit().await.unwrap();
 
+    let mut policy_preparation_tx = pool.begin().await.unwrap();
+    let policy_preparation = repository::insert_preparation(
+        &mut policy_preparation_tx,
+        evaluation,
+        route,
+        digest,
+        input_manifest_digest,
+        "test",
+        "draft_request",
+        result_digest,
+        provenance,
+    )
+    .await
+    .unwrap();
+    policy_preparation_tx.commit().await.unwrap();
+
+    let mut next_policy_tx = pool.begin().await.unwrap();
+    let next_bundle = repository::insert_policy_bundle(
+        &mut next_policy_tx,
+        "AR",
+        1,
+        "ar-test-next",
+        chrono::NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+        None,
+        digest,
+        digest,
+        provenance,
+    )
+    .await
+    .unwrap();
+    repository::activate_policy_bundle(&mut next_policy_tx, next_bundle, actor)
+        .await
+        .unwrap();
+    next_policy_tx.commit().await.unwrap();
+    let policy_preparation_status: String = sqlx::query_scalar(
+        "SELECT status::text FROM preparations WHERE id = $1",
+    )
+    .bind(policy_preparation)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(policy_preparation_status, "invalidated");
+
     let mut claim_jurisdiction_mismatch_tx = pool.begin().await.unwrap();
     let claim_jurisdiction_mismatch = repository::insert_normative_claim(
         &mut claim_jurisdiction_mismatch_tx,

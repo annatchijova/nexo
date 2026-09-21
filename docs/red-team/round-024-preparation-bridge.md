@@ -107,3 +107,12 @@ After a preparation was persisted, inserting another case-graph node left its
 status as `prepared`. The database now invalidates all preparations derived
 from that case while preserving their output and invalidation reason. The API
 integration test covers the transition.
+
+### RT-024-09 — Preparations remained current after policy activation
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+Activating a newer bundle for the same jurisdiction left preparations derived
+from the prior bundle in `prepared`. An activation trigger now invalidates
+those materials while preserving their audit record; the repository probe
+covers the policy replacement.

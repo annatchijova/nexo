@@ -772,6 +772,28 @@ create trigger invalidate_preparations_on_case_node_insert_trigger
     after insert on case_nodes
     for each row execute function invalidate_preparations_on_case_node_insert();
 
+create function invalidate_preparations_on_policy_activation()
+returns trigger as $$
+begin
+    update preparations preparation
+    set status = 'invalidated'::preparation_status,
+        invalidation_reason = 'policy bundle changed'
+    from action_evaluations evaluation
+    join policy_bundles evaluated_bundle
+      on evaluated_bundle.id = evaluation.policy_bundle_id
+    join policy_bundles activated_bundle
+      on activated_bundle.id = new.policy_bundle_id
+    where preparation.action_evaluation_id = evaluation.id
+      and evaluated_bundle.jurisdiction = activated_bundle.jurisdiction
+      and preparation.status <> 'invalidated'::preparation_status;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger invalidate_preparations_on_policy_activation_trigger
+    after insert on policy_bundle_activations
+    for each row execute function invalidate_preparations_on_policy_activation();
+
 -- ---------------------------------------------------------------------
 -- Append-only audit log. The hash-chain itself (entry_hash covering the
 -- previous entry_hash) is Step 2 / nexo-integrity's contract; this table

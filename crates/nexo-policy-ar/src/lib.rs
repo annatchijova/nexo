@@ -26,6 +26,21 @@ pub const CAPTURED_SOURCE_LOCATOR: &str =
     "http://servicios.infoleg.gob.ar/infolegInternet/anexos/60000-64999/64790/texact.htm";
 pub const CAPTURED_SOURCE_ISSUER: &str = "InfoLEG - Ministerio de Justicia (Boletín Oficial)";
 
+/// The digest of the file this crate captured at
+/// `sources/ley_25326_texact.html`, recorded once as a literal and never
+/// recomputed from that same file to check itself. This is what makes the
+/// capture check in `build()` meaningful: comparing a freshly hashed file
+/// against a digest computed from that identical, possibly-since-tampered
+/// file would always pass, no matter what the file currently contains. A
+/// red-team pass confirmed this the hard way — see
+/// docs/RED_TEAM_ROUND_001.md, finding RT-001-02 — by tampering a legal
+/// deadline in the committed source file and observing every test still
+/// pass under the old (self-referential) check. Recorded in
+/// docs/POLICY_BUNDLE_AR_DATA_ACCESS_CONTRACT.md as the source capture's
+/// citable digest.
+pub const CAPTURED_SOURCE_SHA256_HEX: &str =
+    "61548a0fba22550e19a4189c101876238501cb6a9b5821cea5e36478708a3b61";
+
 /// This bundle's own version/currency window start. Distinct from the
 /// underlying statute's effective date (`LAW_PROMULGATED`): this is when
 /// *this captured bundle* was built and activated, per
@@ -62,7 +77,12 @@ pub struct Fixture {
 /// "previa acreditación de su identidad" (identity must be proven before
 /// access is granted).
 pub fn build() -> Fixture {
-    let expected_digest = nexo_integrity::hash_bytes(CAPTURED_SOURCE_BYTES);
+    // The pinned literal, not a hash of CAPTURED_SOURCE_BYTES itself, is
+    // the expected digest: attest_capture must compare the file against an
+    // independent, previously-recorded value, or a tampered file would
+    // simply attest itself.
+    let expected_digest = nexo_integrity::Sha256Digest::from_hex(CAPTURED_SOURCE_SHA256_HEX)
+        .expect("CAPTURED_SOURCE_SHA256_HEX is a valid 64-character hex digest");
     let capture = nexo_policy_bridge::attest_capture(
         CAPTURED_SOURCE_BYTES,
         expected_digest,
@@ -195,6 +215,30 @@ mod tests {
     use nexo_core::{evaluate, ActionEvaluation, ActionStatus, NonActionable};
 
     #[test]
+    fn a_tampered_copy_of_the_captured_source_fails_attestation() {
+        // Regression test for RT-001-02: the pinned CAPTURED_SOURCE_SHA256_HEX,
+        // not a hash of the (possibly tampered) bytes themselves, must be
+        // what attest_capture compares against. This proves that wiring:
+        // mutate one byte of a copy of the real captured bytes and confirm
+        // the pinned digest rejects it, the same way it would reject a
+        // genuinely tampered commit of sources/ley_25326_texact.html.
+        let mut tampered = CAPTURED_SOURCE_BYTES.to_vec();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0xff;
+        let expected_digest =
+            nexo_integrity::Sha256Digest::from_hex(CAPTURED_SOURCE_SHA256_HEX).unwrap();
+        let result = nexo_policy_bridge::attest_capture(
+            &tampered,
+            expected_digest,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(BUNDLE_CAPTURED_AT_UNIX_SECONDS),
+        );
+        assert!(result.is_err(), "a tampered source must fail attestation");
+    }
+
+    #[test]
     fn captured_source_is_the_real_infoleg_text() {
         let text = String::from_utf8_lossy(CAPTURED_SOURCE_BYTES);
         assert!(text.contains("25.326"));
@@ -297,7 +341,8 @@ mod tests {
         // though it is still listed in bundle.claims(), which is exactly
         // the "no authoritative legal source" abstention path, not a
         // route/bundle mismatch.
-        let expected_digest = nexo_integrity::hash_bytes(CAPTURED_SOURCE_BYTES);
+        let expected_digest = nexo_integrity::Sha256Digest::from_hex(CAPTURED_SOURCE_SHA256_HEX)
+            .unwrap();
         let capture = nexo_policy_bridge::attest_capture(
             CAPTURED_SOURCE_BYTES,
             expected_digest,

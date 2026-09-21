@@ -47,13 +47,16 @@ assertions); it only ever inspects the bytes themselves.
 
 ## Resource limits
 
-Enforced twice, independently — once by the container (`nexo-sandbox`'s
-flags) and once inside the extractor binary itself, so a bug or
-misconfiguration in one layer does not remove the other:
+Enforced three times, independently — once by the orchestrator before a
+container is even launched, once by the container itself, and once inside
+the extractor binary, so a bug or misconfiguration in one layer does not
+remove the others (RT-001-04 in `docs/RED_TEAM_ROUND_001.md` found the
+first of these three missing; it is now in place):
 
 | Limit | Value | Enforced by |
 | --- | --- | --- |
-| Input size | 25 MiB | Extractor binary (`MAX_INPUT_BYTES`), checked against `stat` and again against the actual bytes read, so a file that grows between `stat` and `read` is still caught. |
+| Input size (pre-flight) | 32 MiB (default; caller-configurable via `SandboxLimits::max_input_bytes`) | `nexo-sandbox::run_extraction`, before any file is written or container launched. |
+| Input size (in-container) | 25 MiB | Extractor binary (`MAX_INPUT_BYTES`), checked against `stat` and again against the actual bytes read, so a file that grows between `stat` and `read` is still caught. |
 | Line count | 50,000 | Extractor binary (`MAX_LINES`). |
 | Single line length | 100,000 bytes | Extractor binary (`MAX_LINE_BYTES`). |
 | Container memory | 256 MiB (default; caller-configurable via `SandboxLimits`) | Docker (`--memory`/`--memory-swap`, no swap beyond the memory cap). |
@@ -61,6 +64,13 @@ misconfiguration in one layer does not remove the other:
 | Process count | 32 (default) | Docker (`--pids-limit`). |
 | Wall clock | 10 seconds (default) | `nexo-sandbox` watcher thread + `docker kill`. |
 | Result file read back | 4 MiB (default) | `nexo-sandbox::JobDir::read_result`, which reads at most `max_output_bytes + 1` and rejects anything larger rather than allocating unboundedly for the response either. |
+
+The per-field input caps (line count, line length) are not cross-checked
+against the output-size cap: an input using near-maximal values for every
+field can still produce a result exceeding `max_output_bytes`, which is
+then correctly rejected as `OutputTooLarge` rather than silently truncated
+or allowed to crash the container — a safe, tested, but non-obvious
+interaction. See RT-001-03 in `docs/RED_TEAM_ROUND_001.md`.
 
 Decompression-ratio limits are **not applicable** to this extractor: it
 performs no decompression of any kind. An archive-bomb-style test is

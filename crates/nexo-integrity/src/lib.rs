@@ -27,9 +27,44 @@ pub enum CanonicalValue {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Sha256Digest([u8; 32]);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DigestHexError {
+    WrongLength,
+    InvalidHexDigit,
+}
+
 impl Sha256Digest {
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// Parses a lowercase or uppercase 64-character hex digest, the same
+    /// shape `Display` produces. This exists so a digest can be pinned as a
+    /// literal (in code, in a contract doc, in a config file) and compared
+    /// against freshly hashed bytes — the comparison is only meaningful if
+    /// the expected side did not itself come from hashing those same bytes
+    /// a second time.
+    pub fn from_hex(hex: &str) -> Result<Self, DigestHexError> {
+        let hex = hex.as_bytes();
+        if hex.len() != 64 {
+            return Err(DigestHexError::WrongLength);
+        }
+        let mut out = [0u8; 32];
+        for (index, pair) in hex.as_chunks::<2>().0.iter().enumerate() {
+            let high = hex_digit(pair[0]).ok_or(DigestHexError::InvalidHexDigit)?;
+            let low = hex_digit(pair[1]).ok_or(DigestHexError::InvalidHexDigit)?;
+            out[index] = (high << 4) | low;
+        }
+        Ok(Self(out))
+    }
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -515,5 +550,36 @@ mod tests {
             ManifestEntry::new("b", hash_bytes(b"first")),
         ]);
         assert_ne!(original.seal(), swapped_digests.seal());
+    }
+
+    #[test]
+    fn from_hex_round_trips_with_display() {
+        let digest = hash_bytes(b"abc");
+        let parsed = Sha256Digest::from_hex(&digest.to_string()).unwrap();
+        assert_eq!(digest, parsed);
+    }
+
+    #[test]
+    fn from_hex_accepts_uppercase() {
+        let digest = hash_bytes(b"abc");
+        let upper = digest.to_string().to_uppercase();
+        assert_eq!(Sha256Digest::from_hex(&upper).unwrap(), digest);
+    }
+
+    #[test]
+    fn from_hex_rejects_wrong_length() {
+        assert_eq!(
+            Sha256Digest::from_hex("ab").unwrap_err(),
+            DigestHexError::WrongLength
+        );
+    }
+
+    #[test]
+    fn from_hex_rejects_invalid_digit() {
+        let bad = "g".repeat(64);
+        assert_eq!(
+            Sha256Digest::from_hex(&bad).unwrap_err(),
+            DigestHexError::InvalidHexDigit
+        );
     }
 }

@@ -10,6 +10,6 @@ repository.workspace = true
 [dependencies]
 nexo-core = { path = "../nexo-core" }
 nexo-integrity = { path = "../nexo-integrity" }
+tempfile = "3.27.0"
 
 [dev-dependencies]
-tempfile = "3.27.0"

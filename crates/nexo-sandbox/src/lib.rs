@@ -31,6 +31,16 @@ pub struct SandboxLimits {
     pub cpus: f64,
     pub pids_limit: u32,
     pub wall_clock: Duration,
+    /// Cap on `input_bytes` this crate will accept before it ever writes a
+    /// byte to the job's input directory or launches a container. Nothing
+    /// upstream of this call bounds artifact size on its own; without this
+    /// check, `docs/SANDBOX.md`'s promised "explicit ... limits" at the
+    /// isolation layer would in practice not exist here at all — a caller
+    /// (an HTTP upload handler, say) would be the only thing standing
+    /// between an oversized artifact and however much host memory it takes
+    /// to hold `input_bytes` before this function is even called. See
+    /// docs/RED_TEAM_ROUND_001.md, finding RT-001-04.
+    pub max_input_bytes: u64,
     /// Cap on the result file this process will read back. A container
     /// that writes more than this is treated the same as one that produced
     /// no usable result: this process never allocates unboundedly for
@@ -45,6 +55,7 @@ impl SandboxLimits {
             cpus: 0.5,
             pids_limit: 32,
             wall_clock: Duration::from_secs(10),
+            max_input_bytes: 32 * 1024 * 1024,
             max_output_bytes: 4 * 1024 * 1024,
         }
     }
@@ -65,6 +76,9 @@ pub enum SandboxError {
     },
     NoOutputProduced,
     OutputTooLarge,
+    /// `input_bytes` exceeded `SandboxLimits::max_input_bytes`. Rejected
+    /// before any file was written or container launched.
+    InputTooLarge,
 }
 
 impl From<std::io::Error> for SandboxError {
@@ -83,6 +97,9 @@ pub fn run_extraction(
     input_bytes: &[u8],
     limits: &SandboxLimits,
 ) -> Result<Vec<u8>, SandboxError> {
+    if input_bytes.len() as u64 > limits.max_input_bytes {
+        return Err(SandboxError::InputTooLarge);
+    }
     let job = JobDir::create()?;
     job.write_input(input_bytes)?;
 
@@ -246,6 +263,19 @@ impl Drop for JobDir {
 mod tests {
     use super::*;
 
+    /// Regression test for RT-001-04: oversized input must be rejected
+    /// before any file is written or any container launched — no docker
+    /// dependency, this must hold even without docker installed.
+    #[test]
+    fn oversized_input_is_rejected_before_touching_disk_or_docker() {
+        let limits = SandboxLimits {
+            max_input_bytes: 10,
+            ..SandboxLimits::conservative_default()
+        };
+        let result = run_extraction("unused-image", &[0u8; 11], &limits);
+        assert!(matches!(result, Err(SandboxError::InputTooLarge)));
+    }
+
     fn docker_available() -> bool {
         Command::new("docker")
             .arg("info")
@@ -350,6 +380,51 @@ mod tests {
         assert!(
             elapsed < Duration::from_secs(6),
             "kill should land well before 6s for a 2s deadline, took {elapsed:?}"
+        );
+    }
+
+    fn plaintext_extractor_image_available() -> bool {
+        Command::new("docker")
+            .args(["image", "inspect", "nexo-extractor-plaintext:local"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    /// Regression test for RT-001-03 (docs/RED_TEAM_ROUND_001.md): an input
+    /// that respects every one of `nexo-extractor-plaintext`'s own
+    /// advertised caps (25 MiB total, 50,000 lines, 100,000 bytes/line)
+    /// can still produce a result file far past this crate's default
+    /// `max_output_bytes` (4 MiB). The important property under test is
+    /// that this surfaces as the typed `OutputTooLarge`, never a crash,
+    /// a hang, or (worse) a silently truncated result treated as complete.
+    #[test]
+    fn large_but_within_input_cap_extraction_hits_output_too_large_not_a_crash() {
+        if !docker_available() || !plaintext_extractor_image_available() {
+            eprintln!(
+                "skipping: docker not available or nexo-extractor-plaintext:local not built \
+                 (scripts/build_extractors.sh)"
+            );
+            return;
+        }
+        // 230 lines * ~100_000 bytes = ~23 MiB: within every one of the
+        // extractor's own input caps, but the resulting JSON is ~23 MiB,
+        // far past the orchestrator's default 4 MiB max_output_bytes.
+        let mut input = Vec::new();
+        for _ in 0..230 {
+            input.extend(std::iter::repeat_n(b'B', 99_999));
+            input.push(b'\n');
+        }
+        let limits = SandboxLimits {
+            wall_clock: Duration::from_secs(20),
+            ..SandboxLimits::conservative_default()
+        };
+        let result = run_extraction("nexo-extractor-plaintext:local", &input, &limits);
+        assert!(
+            matches!(result, Err(SandboxError::OutputTooLarge)),
+            "expected OutputTooLarge for a result exceeding max_output_bytes, got {result:?}"
         );
     }
 }

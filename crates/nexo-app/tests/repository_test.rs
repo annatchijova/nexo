@@ -521,10 +521,15 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         .await
         .unwrap();
     let preparation_without_receipt = sqlx::query(
-        "INSERT INTO preparations (action_evaluation_id, kind)
-         VALUES ($1, 'draft_request'::preparation_kind)",
+        "INSERT INTO preparations
+            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+             input_manifest_digest_id, generator_version, kind)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind)",
     )
     .bind(evaluation.0)
+    .bind(route.0)
+    .bind(digest.0)
+    .bind(input_manifest_digest.0)
     .execute(&mut *preparation_without_receipt_tx)
     .await;
     assert!(
@@ -535,11 +540,16 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
 
     let mut preparation_lifecycle_tx = pool.begin().await.unwrap();
     let preparation_id: i64 = sqlx::query_scalar(
-        "INSERT INTO preparations (action_evaluation_id, kind)
-         VALUES ($1, 'draft_request'::preparation_kind)
+        "INSERT INTO preparations
+            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+             input_manifest_digest_id, generator_version, kind)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind)
          RETURNING id",
     )
     .bind(evaluation.0)
+    .bind(route.0)
+    .bind(digest.0)
+    .bind(input_manifest_digest.0)
     .fetch_one(&mut *preparation_lifecycle_tx)
     .await
     .unwrap();
@@ -571,6 +581,39 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "preparation evidence must not be deleted"
     );
     preparation_lifecycle_tx.rollback().await.unwrap();
+
+    let mut foreign_provenance_tx = pool.begin().await.unwrap();
+    let foreign_provenance = repository::insert_provenance(
+        &mut foreign_provenance_tx,
+        other_case,
+        "user_provided",
+        Some(actor),
+        Utc::now(),
+        json!({"foreign": true}),
+    )
+    .await
+    .unwrap();
+    foreign_provenance_tx.commit().await.unwrap();
+
+    let mut preparation_foreign_provenance_tx = pool.begin().await.unwrap();
+    let preparation_foreign_provenance = sqlx::query(
+        "INSERT INTO preparations
+            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+             input_manifest_digest_id, generator_version, kind, output_provenance_id)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind, $5)",
+    )
+    .bind(evaluation.0)
+    .bind(route.0)
+    .bind(digest.0)
+    .bind(input_manifest_digest.0)
+    .bind(foreign_provenance.0)
+    .execute(&mut *preparation_foreign_provenance_tx)
+    .await;
+    assert!(
+        preparation_foreign_provenance.is_err(),
+        "preparation output provenance must belong to the evaluation case"
+    );
+    preparation_foreign_provenance_tx.rollback().await.unwrap();
 
     assert!(receipt.0 > 0);
 

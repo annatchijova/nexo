@@ -648,6 +648,10 @@ create type preparation_status as enum ('prepared', 'exported', 'invalidated');
 create table preparations (
     id                       bigint generated always as identity primary key,
     action_evaluation_id      bigint not null references action_evaluations (id),
+    action_route_id           bigint not null references action_routes (id),
+    policy_bundle_digest_id   bigint not null references digests (id),
+    input_manifest_digest_id  bigint not null references digests (id),
+    generator_version         text not null check (generator_version <> ''),
     kind                       preparation_kind not null,
     status                      preparation_status not null default 'prepared',
     prepared_at                 timestamptz not null default now(),
@@ -668,19 +672,39 @@ declare
     kind evaluation_result_kind;
     status action_status;
     has_receipt boolean;
+    evaluation_case_id bigint;
+    provenance_case_id bigint;
+    receipt_route_id bigint;
+    receipt_bundle_id bigint;
+    receipt_input_manifest_digest_id bigint;
+    bundle_digest_id bigint;
 begin
-    select result_kind, action_status into kind, status
+    select case_id, result_kind, action_status
+      into evaluation_case_id, kind, status
     from action_evaluations
     where id = new.action_evaluation_id;
-    select exists(
-        select 1
-        from evaluation_receipts
-        where action_evaluation_id = new.action_evaluation_id
-    ) into has_receipt;
+    select action_route_id, policy_bundle_id, input_manifest_digest_id
+      into receipt_route_id, receipt_bundle_id, receipt_input_manifest_digest_id
+    from evaluation_receipts
+    where action_evaluation_id = new.action_evaluation_id;
+    has_receipt := receipt_route_id is not null;
+    select digest_id into bundle_digest_id
+    from policy_bundles
+    where id = receipt_bundle_id;
+    if new.output_provenance_id is not null then
+        select case_id into provenance_case_id
+        from provenance_records
+        where id = new.output_provenance_id;
+    end if;
 
     if kind is distinct from 'actionable'
        or status is distinct from 'supported'::action_status
-       or not has_receipt then
+       or not has_receipt
+       or new.action_route_id is distinct from receipt_route_id
+       or new.policy_bundle_digest_id is distinct from bundle_digest_id
+       or new.input_manifest_digest_id is distinct from receipt_input_manifest_digest_id
+       or (new.output_provenance_id is not null
+           and provenance_case_id is distinct from evaluation_case_id) then
         raise exception
             'preparation % lacks a supported evaluation receipt for action_evaluation %',
             new.id, new.action_evaluation_id;

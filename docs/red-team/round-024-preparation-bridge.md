@@ -60,3 +60,21 @@ Direct SQL could move an exported preparation back to `prepared` and delete
 the row entirely. The lifecycle trigger now preserves identity fields, allows
 only forward transitions or invalidation with a reason, and rejects deletes.
 The repository probe covers both rewind and deletion attempts.
+
+### RT-024-04 — Preparation output provenance could cross cases
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+A direct insert could attach output provenance from another case to a valid
+supported evaluation. The preparation trigger now resolves both case IDs and
+rejects that mismatch; the repository probe covers the cross-case insertion.
+
+### RT-024-05 — Preparation records omitted binding identities
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The schema originally stored only the evaluation reference and lifecycle
+metadata. It did not require the route, policy digest, input-manifest digest,
+or generator version that the preparation contract requires. Those fields are
+now mandatory, and the trigger compares route, bundle digest, and input
+manifest against the receipt before insertion or update.

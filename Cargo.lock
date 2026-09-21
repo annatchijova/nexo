@@ -189,6 +189,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nexo-policy-ar"
+version = "0.1.0"
+dependencies = [
+ "nexo-core",
+ "nexo-integrity",
+ "nexo-policy-bridge",
+]
+
+[[package]]
 name = "nexo-policy-bridge"
 version = "0.1.0"
 dependencies = [

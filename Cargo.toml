@@ -7,6 +7,7 @@ members = [
     "crates/nexo-extractor-plaintext",
     "crates/nexo-sandbox",
     "crates/nexo-extraction",
+    "crates/nexo-policy-ar",
 ]
 resolver = "3"
 

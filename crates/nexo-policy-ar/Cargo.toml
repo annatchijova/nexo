@@ -1,0 +1,13 @@
+[package]
+name = "nexo-policy-ar"
+description = "Argentina policy bundle: Ley 25.326 (personal data access, rectification, and suppression), built from a real captured official source."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nexo-core = { path = "../nexo-core" }
+nexo-integrity = { path = "../nexo-integrity" }
+nexo-policy-bridge = { path = "../nexo-policy-bridge" }

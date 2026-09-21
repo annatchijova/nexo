@@ -26,6 +26,28 @@ pub const CAPTURED_SOURCE_LOCATOR: &str =
     "http://servicios.infoleg.gob.ar/infolegInternet/anexos/60000-64999/64790/texact.htm";
 pub const CAPTURED_SOURCE_ISSUER: &str = "InfoLEG - Ministerio de Justicia (Boletín Oficial)";
 
+const CLAIM_ACCESS_PROPOSITION: &str =
+    "Art. 14, Ley 25.326: derecho de acceso a los propios datos personales, \
+     previa acreditación de identidad, dentro de los diez días corridos de \
+     intimado el responsable.";
+const CLAIM_RECTIFICATION_PROPOSITION: &str =
+    "Art. 16, Ley 25.326: derecho a que sean rectificados, actualizados o, \
+     cuando corresponda, suprimidos los datos personales, dentro de los \
+     cinco días hábiles de recibido el reclamo.";
+
+/// The human-readable citation behind one `NormativeClaimId`: this is what
+/// answers "why is this shown to me?" for a route that cites this claim.
+/// `nexo_core::NormativeClaim` deliberately exposes no proposition-text
+/// getter (its public surface is the minimal set `nexo-core` itself needs);
+/// this crate is the one place that knows the mapping, because it is the
+/// one place that wrote the text in the first place.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClaimCitation {
+    pub proposition: &'static str,
+    pub source_issuer: &'static str,
+    pub source_locator: &'static str,
+}
+
 /// The digest of the file this crate captured at
 /// `sources/ley_25326_texact.html`, recorded once as a literal and never
 /// recomputed from that same file to check itself. This is what makes the
@@ -67,6 +89,19 @@ pub struct Fixture {
     pub identity_requirement: RequirementId,
     pub jurisdiction_evidence: JurisdictionEvidenceId,
     pub freshness_evidence: PolicyFreshnessEvidenceId,
+    /// `NormativeClaimId` derives `Eq`/`PartialEq` but not `Hash` in
+    /// `nexo-core`, so citations are a small linear-scan list rather than a
+    /// map — fine at this crate's scale (two claims today).
+    pub citations: Vec<(NormativeClaimId, ClaimCitation)>,
+}
+
+impl Fixture {
+    pub fn citation_for(&self, claim: NormativeClaimId) -> Option<&ClaimCitation> {
+        self.citations
+            .iter()
+            .find(|(id, _)| *id == claim)
+            .map(|(_, citation)| citation)
+    }
 }
 
 /// Builds the real bundle: attests the actual captured InfoLEG bytes
@@ -110,11 +145,7 @@ pub fn build() -> Fixture {
 
     let claim_access = NormativeClaim::try_new(
         NormativeClaimId::new(node(6)),
-        text(
-            "Art. 14, Ley 25.326: derecho de acceso a los propios datos personales, \
-             previa acreditación de identidad, dentro de los diez días corridos de \
-             intimado el responsable.",
-        ),
+        text(CLAIM_ACCESS_PROPOSITION),
         text(JurisdictionCode::Argentina.code()),
         ValidityInterval::try_new(law_promulgated, None).expect("open-ended validity"),
         bundle_id,
@@ -124,11 +155,7 @@ pub fn build() -> Fixture {
 
     let claim_rectification = NormativeClaim::try_new(
         NormativeClaimId::new(node(7)),
-        text(
-            "Art. 16, Ley 25.326: derecho a que sean rectificados, actualizados o, \
-             cuando corresponda, suprimidos los datos personales, dentro de los \
-             cinco días hábiles de recibido el reclamo.",
-        ),
+        text(CLAIM_RECTIFICATION_PROPOSITION),
         text(JurisdictionCode::Argentina.code()),
         ValidityInterval::try_new(law_promulgated, None).expect("open-ended validity"),
         bundle_id,
@@ -171,6 +198,25 @@ pub fn build() -> Fixture {
     )
     .expect("route satisfies nexo-core's construction invariants");
 
+    let citations = vec![
+        (
+            claim_access.id(),
+            ClaimCitation {
+                proposition: CLAIM_ACCESS_PROPOSITION,
+                source_issuer: CAPTURED_SOURCE_ISSUER,
+                source_locator: CAPTURED_SOURCE_LOCATOR,
+            },
+        ),
+        (
+            claim_rectification.id(),
+            ClaimCitation {
+                proposition: CLAIM_RECTIFICATION_PROPOSITION,
+                source_issuer: CAPTURED_SOURCE_ISSUER,
+                source_locator: CAPTURED_SOURCE_LOCATOR,
+            },
+        ),
+    ];
+
     Fixture {
         bundle,
         context,
@@ -180,6 +226,7 @@ pub fn build() -> Fixture {
         identity_requirement,
         jurisdiction_evidence: JurisdictionEvidenceId::new(node(10)),
         freshness_evidence: PolicyFreshnessEvidenceId::new(node(11)),
+        citations,
     }
 }
 
@@ -245,6 +292,19 @@ mod tests {
         assert!(text.contains("ARTICULO 14"));
         assert!(text.contains("previa acreditaci"));
         assert!(text.contains("ARTICULO 16"));
+    }
+
+    #[test]
+    fn citations_cover_exactly_every_claim_the_route_requires() {
+        let fixture = build();
+        assert_eq!(fixture.citations.len(), 2);
+        for claim in [fixture.claim_access, fixture.claim_rectification] {
+            let citation = fixture
+                .citation_for(claim)
+                .expect("every route claim must have a citation");
+            assert!(!citation.proposition.is_empty());
+            assert_eq!(citation.source_locator, CAPTURED_SOURCE_LOCATOR);
+        }
     }
 
     #[test]

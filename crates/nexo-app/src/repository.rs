@@ -29,6 +29,13 @@ pub enum RepoError {
     EmptyClaimList,
 }
 
+impl std::fmt::Display for RepoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for RepoError {}
+
 impl From<sqlx::Error> for RepoError {
     fn from(value: sqlx::Error) -> Self {
         Self::Db(value)
@@ -339,6 +346,41 @@ pub async fn list_case_node_ids(pool: &Pool, case: CaseRowId) -> Result<Vec<i64>
         .fetch_all(pool)
         .await?;
     Ok(rows.iter().map(|r| r.get("node_id")).collect())
+}
+
+#[derive(Debug)]
+pub struct CaseNodeSummary {
+    pub node_id: i64,
+    pub kind: String,
+    /// `Some(confirmed)` for a `user_assertion` node, `None` for every
+    /// other kind.
+    pub confirmed: Option<bool>,
+}
+
+pub async fn list_case_nodes_with_kind(
+    pool: &Pool,
+    case: CaseRowId,
+) -> Result<Vec<CaseNodeSummary>, RepoError> {
+    let rows = sqlx::query(
+        "SELECT n.node_id, n.kind::text AS kind,
+                (u.confirmation = 'confirmed') AS confirmed
+         FROM case_nodes n
+         LEFT JOIN user_assertion_nodes u
+           ON u.case_id = n.case_id AND u.node_id = n.node_id
+         WHERE n.case_id = $1
+         ORDER BY n.node_id",
+    )
+    .bind(case.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| CaseNodeSummary {
+            node_id: r.get("node_id"),
+            kind: r.get("kind"),
+            confirmed: r.get("confirmed"),
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------

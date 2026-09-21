@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Runs nexo-api's end-to-end tests: disposable PostgreSQL + real Docker
+# sandbox + the real nexo-extractor-plaintext image, hit through the real
+# axum Router (no network socket needed, tower::ServiceExt::oneshot).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+CONTAINER_NAME="nexo-pg-api-test"
+PORT=55435
+DB=nexo_api_test
+
+cleanup() {
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker run -d --name "$CONTAINER_NAME" \
+  -e POSTGRES_PASSWORD=nexo -e POSTGRES_DB="$DB" \
+  -p "${PORT}:5432" postgres:16 >/dev/null
+
+export PGPASSWORD=nexo
+ready=0
+for _ in $(seq 1 30); do
+  if psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -c 'select 1' >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  echo "FAIL: postgres did not become ready" >&2
+  exit 1
+fi
+
+echo "== applying migration =="
+psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
+  -f crates/nexo-app/migrations/0001_init.sql >/dev/null
+
+if ! docker image inspect nexo-extractor-plaintext:local >/dev/null 2>&1; then
+  echo "== building extractor image (not found) =="
+  ./scripts/build_extractors.sh
+fi
+
+export DATABASE_URL="postgres://postgres:nexo@127.0.0.1:${PORT}/${DB}"
+echo "== running nexo-api end-to-end tests =="
+cargo test -p nexo-api --test api_test -- --test-threads=4

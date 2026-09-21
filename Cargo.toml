@@ -8,6 +8,7 @@ members = [
     "crates/nexo-sandbox",
     "crates/nexo-extraction",
     "crates/nexo-policy-ar",
+    "crates/nexo-api",
 ]
 resolver = "3"
 

@@ -47,6 +47,13 @@ pub enum ObjectStoreError {
     TooLarge,
 }
 
+impl std::fmt::Display for ObjectStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for ObjectStoreError {}
+
 impl From<io::Error> for ObjectStoreError {
     fn from(value: io::Error) -> Self {
         Self::Io(value)

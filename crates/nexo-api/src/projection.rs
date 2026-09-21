@@ -53,6 +53,14 @@ pub fn input_manifest_digest(manifest: &InputManifest) -> String {
     seal(&CanonicalValue::Map(fields)).to_string()
 }
 
+pub async fn current_input_manifest_digest(
+    pool: &Pool,
+    case: CaseRowId,
+) -> Result<String, ProjectionError> {
+    let nodes = repository::list_case_nodes_with_kind(pool, case).await?;
+    Ok(input_manifest_digest(&InputManifest { nodes }))
+}
+
 impl From<repository::RepoError> for ProjectionError {
     fn from(value: repository::RepoError) -> Self {
         Self::Repo(value)

@@ -159,3 +159,15 @@ writer could replace the sealed result payload or status while the receipt and
 dependent preparation continued to refer to the old decision. Evaluations are
 now immutable once a receipt exists; deletion of the receipt remains the
 explicit revocation path and invalidates dependent preparations.
+
+### RT-024-14 — Preparation could consume a stale input manifest
+
+**Level:** PLAUSIBLE HYPOTHESIS → HARDENED; runtime induction deferred
+
+The evaluation projection was read before the preparation transaction, while
+the preparation bridge revalidated the receipt but not the current case graph.
+An intervening graph mutation could therefore make the receipt's manifest stale
+before material persistence. The bridge now locks the case row, recomputes the
+manifest, and rejects persistence when it differs from the receipt. A public
+preparation endpoint does not exist yet, so the concurrent external induction
+remains deferred; the repository node writers all use the same case-row lock.

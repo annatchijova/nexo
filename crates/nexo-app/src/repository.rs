@@ -241,15 +241,20 @@ pub async fn ensure_tool_version(
 // ---------------------------------------------------------------------
 
 async fn lock_case_and_next_node_id(tx: &mut Tx<'_>, case: CaseRowId) -> Result<i64, RepoError> {
-    sqlx::query("SELECT id FROM cases WHERE id = $1 FOR UPDATE")
-        .bind(case.0)
-        .fetch_one(&mut **tx)
-        .await?;
+    lock_case(tx, case).await?;
     let row = sqlx::query("SELECT COALESCE(MAX(node_id), 0) + 1 AS next FROM case_nodes WHERE case_id = $1")
         .bind(case.0)
         .fetch_one(&mut **tx)
         .await?;
     Ok(row.try_get("next")?)
+}
+
+pub async fn lock_case(tx: &mut Tx<'_>, case: CaseRowId) -> Result<(), RepoError> {
+    sqlx::query("SELECT id FROM cases WHERE id = $1 FOR UPDATE")
+        .bind(case.0)
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(())
 }
 
 pub async fn insert_artifact_node(
@@ -643,6 +648,7 @@ pub struct EvaluationReceiptBinding {
     pub policy_bundle_id: i64,
     pub policy_bundle_digest_id: i64,
     pub input_manifest_digest_id: i64,
+    pub input_manifest_digest_hex: String,
     pub result_digest_id: i64,
     pub action_digest_id: i64,
     pub action_digest_hex: String,
@@ -662,6 +668,7 @@ pub async fn find_evaluation_receipt_binding(
         "SELECT e.id, e.route_id, e.policy_bundle_id,
                 bundle.digest_id AS policy_bundle_digest_id,
                 receipt.input_manifest_digest_id,
+                input_manifest_digest.hex AS input_manifest_digest_hex,
                 receipt.result_digest_id,
                 receipt.action_digest_id,
                 action_digest.hex AS action_digest_hex,
@@ -671,6 +678,8 @@ pub async fn find_evaluation_receipt_binding(
            ON receipt.action_evaluation_id = e.id
          JOIN policy_bundles bundle
            ON bundle.id = e.policy_bundle_id
+         JOIN digests input_manifest_digest
+           ON input_manifest_digest.id = receipt.input_manifest_digest_id
          JOIN digests action_digest
            ON action_digest.id = receipt.action_digest_id
          WHERE e.id = $1
@@ -686,6 +695,7 @@ pub async fn find_evaluation_receipt_binding(
         policy_bundle_id: row.get("policy_bundle_id"),
         policy_bundle_digest_id: row.get("policy_bundle_digest_id"),
         input_manifest_digest_id: row.get("input_manifest_digest_id"),
+        input_manifest_digest_hex: row.get("input_manifest_digest_hex"),
         result_digest_id: row.get("result_digest_id"),
         action_digest_id: row.get("action_digest_id"),
         action_digest_hex: row.get("action_digest_hex"),

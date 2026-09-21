@@ -19,6 +19,7 @@ pub enum PreparationVerificationError {
     EvaluationNotSupported,
     InvalidDurableIdentity,
     ActionFingerprintMismatch,
+    InputManifestChanged,
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -166,11 +167,23 @@ pub async fn persist_prepared_material(
     let binding = repository::find_evaluation_receipt_binding(pool, case, evaluation)
         .await?
         .ok_or(PreparationVerificationError::ReceiptNotFound)?;
-    let output_digest = store.put(bytes)?;
     let mut tx = pool
         .begin()
         .await
         .map_err(repository::RepoError::from)?;
+    repository::lock_case(&mut tx, case).await?;
+    let current_manifest = crate::projection::current_input_manifest_digest(pool, case)
+        .await
+        .map_err(|error| match error {
+            crate::projection::ProjectionError::Repo(error) => {
+                PreparationVerificationError::Repository(error)
+            }
+            _ => PreparationVerificationError::InputManifestChanged,
+        })?;
+    if current_manifest != binding.input_manifest_digest_hex {
+        return Err(PreparationVerificationError::InputManifestChanged);
+    }
+    let output_digest = store.put(bytes)?;
     let output_digest = repository::upsert_digest(&mut tx, "sha256", &output_digest.to_string())
         .await?;
     let preparation = repository::insert_preparation(

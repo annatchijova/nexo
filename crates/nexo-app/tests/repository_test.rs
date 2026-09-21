@@ -244,6 +244,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let Some(pool) = pool().await else { return };
     let actor = unique_actor(&pool, "eval").await;
     let case = repository::create_case(&pool, actor).await.unwrap();
+    let other_case = repository::create_case(&pool, actor).await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
     let digest = repository::upsert_digest(&mut tx, "sha256", &"ef".repeat(32))
@@ -299,6 +300,43 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         .await
         .unwrap();
 
+    let bundle_two = repository::insert_policy_bundle(
+        &mut tx,
+        "AR",
+        1,
+        "ar-test-2",
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        None,
+        digest,
+        digest,
+        provenance,
+    )
+    .await
+    .unwrap();
+    repository::activate_policy_bundle(&mut tx, bundle_two, actor)
+        .await
+        .unwrap();
+    let claim_two = repository::insert_normative_claim(
+        &mut tx,
+        bundle_two,
+        "second test claim",
+        "AR",
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        None,
+        &[(source, "primary")],
+    )
+    .await
+    .unwrap();
+    let route_two = repository::insert_action_route(
+        &mut tx,
+        bundle_two,
+        "AR",
+        "second policy route",
+        &[claim_two],
+    )
+    .await
+    .unwrap();
+
     let payload = json!({"factual_support": [{"artifact": 1}]});
     let evaluation = repository::insert_action_evaluation(
         &mut tx,
@@ -314,7 +352,137 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     )
     .await
     .unwrap();
+    let input_manifest_digest = repository::upsert_digest(&mut tx, "sha256", &"11".repeat(32))
+        .await
+        .unwrap();
+    let result_digest = repository::upsert_digest(&mut tx, "sha256", &"22".repeat(32))
+        .await
+        .unwrap();
+    let receipt = repository::insert_evaluation_receipt(
+        &mut tx,
+        evaluation,
+        case,
+        route,
+        bundle,
+        input_manifest_digest,
+        result_digest,
+        1,
+        1,
+        "0.1.0",
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
+
+    let mut claim_jurisdiction_mismatch_tx = pool.begin().await.unwrap();
+    let claim_jurisdiction_mismatch = repository::insert_normative_claim(
+        &mut claim_jurisdiction_mismatch_tx,
+        bundle,
+        "foreign jurisdiction claim",
+        "UY",
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        None,
+        &[(source, "primary")],
+    )
+    .await;
+    assert!(
+        claim_jurisdiction_mismatch.is_err(),
+        "a claim must use its policy bundle jurisdiction"
+    );
+    claim_jurisdiction_mismatch_tx.rollback().await.unwrap();
+
+    let mut route_jurisdiction_mismatch_tx = pool.begin().await.unwrap();
+    let route_jurisdiction_mismatch = repository::insert_action_route(
+        &mut route_jurisdiction_mismatch_tx,
+        bundle,
+        "UY",
+        "route with foreign jurisdiction",
+        &[claim],
+    )
+    .await;
+    assert!(
+        route_jurisdiction_mismatch.is_err(),
+        "a route must use its policy bundle jurisdiction"
+    );
+    route_jurisdiction_mismatch_tx.rollback().await.unwrap();
+
+    let mut route_claim_mismatch_tx = pool.begin().await.unwrap();
+    let route_claim_mismatch = repository::insert_action_route(
+        &mut route_claim_mismatch_tx,
+        bundle_two,
+        "AR",
+        "route with foreign claim",
+        &[claim],
+    )
+    .await;
+    assert!(
+        route_claim_mismatch.is_err(),
+        "a route must not include a claim from another policy bundle"
+    );
+    route_claim_mismatch_tx.rollback().await.unwrap();
+
+    let mut route_bundle_mismatch_tx = pool.begin().await.unwrap();
+    let route_bundle_mismatch = repository::insert_action_evaluation(
+        &mut route_bundle_mismatch_tx,
+        case,
+        route_two,
+        bundle,
+        "0.1.0",
+        "actionable",
+        Some("supported"),
+        None,
+        1,
+        json!({"factual_support": []}),
+    )
+    .await;
+    assert!(
+        route_bundle_mismatch.is_err(),
+        "an evaluation must bind its route to the same policy bundle"
+    );
+    route_bundle_mismatch_tx.rollback().await.unwrap();
+
+    let mut activated_bundle_update_tx = pool.begin().await.unwrap();
+    let activated_bundle_update = sqlx::query(
+        "UPDATE policy_bundles
+         SET policy_version = 'tampered-after-activation'
+         WHERE id = $1",
+    )
+    .bind(bundle.0)
+    .execute(&mut *activated_bundle_update_tx)
+    .await;
+    assert!(
+        activated_bundle_update.is_err(),
+        "an activated policy bundle must be immutable"
+    );
+    activated_bundle_update_tx.rollback().await.unwrap();
+
+    let mut activated_route_update_tx = pool.begin().await.unwrap();
+    let activated_route_update = sqlx::query(
+        "UPDATE action_routes SET title = 'tampered route' WHERE id = $1",
+    )
+    .bind(route.0)
+    .execute(&mut *activated_route_update_tx)
+    .await;
+    assert!(
+        activated_route_update.is_err(),
+        "a route in an activated policy bundle must be immutable"
+    );
+    activated_route_update_tx.rollback().await.unwrap();
+
+    let mut activated_claim_update_tx = pool.begin().await.unwrap();
+    let activated_claim_update = sqlx::query(
+        "UPDATE normative_claims SET proposition = 'tampered claim' WHERE id = $1",
+    )
+    .bind(claim.0)
+    .execute(&mut *activated_claim_update_tx)
+    .await;
+    assert!(
+        activated_claim_update.is_err(),
+        "a claim in an activated policy bundle must be immutable"
+    );
+    activated_claim_update_tx.rollback().await.unwrap();
+
+    assert!(receipt.0 > 0);
 
     let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();
     assert_eq!(listed.len(), 1);
@@ -323,4 +491,56 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     assert_eq!(listed[0].action_status.as_deref(), Some("supported"));
     assert_eq!(listed[0].non_actionable_variant, None);
     assert_eq!(listed[0].result_payload, payload);
+
+    let mut mismatched_tx = pool.begin().await.unwrap();
+    let mismatched = repository::insert_evaluation_receipt(
+        &mut mismatched_tx,
+        evaluation,
+        other_case,
+        route,
+        bundle,
+        input_manifest_digest,
+        result_digest,
+        1,
+        1,
+        "0.1.0",
+    )
+    .await;
+    assert!(mismatched.is_err(), "receipt must bind to the evaluation case");
+    mismatched_tx.rollback().await.unwrap();
+
+    let mut non_actionable_tx = pool.begin().await.unwrap();
+    sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
+        .bind(evaluation.0)
+        .execute(&mut *non_actionable_tx)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE action_evaluations
+         SET result_kind = 'non_actionable', action_status = NULL,
+             non_actionable_variant = 'insufficient_facts'
+         WHERE id = $1",
+    )
+    .bind(evaluation.0)
+    .execute(&mut *non_actionable_tx)
+    .await
+    .unwrap();
+    let non_actionable_receipt = repository::insert_evaluation_receipt(
+        &mut non_actionable_tx,
+        evaluation,
+        case,
+        route,
+        bundle,
+        input_manifest_digest,
+        result_digest,
+        1,
+        1,
+        "0.1.0",
+    )
+    .await;
+    assert!(
+        non_actionable_receipt.is_err(),
+        "non-actionable evaluations cannot produce preparation evidence"
+    );
+    non_actionable_tx.rollback().await.unwrap();
 }

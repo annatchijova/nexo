@@ -195,6 +195,11 @@ gives:
   mandatory requirements a route requires.
 - **`action_evaluations`** — top-level columns plus the sealed JSON payload,
   as described above.
+- **`evaluation_receipts`** — application-owned binding evidence for a
+  `SUPPORTED` evaluation: durable evaluation/action/case/bundle identities,
+  result and input-manifest digests, and schema/version fields. These receipts
+  are not preparation capabilities by themselves and are never created for a
+  non-actionable or conditional evaluation.
 - **`preparations`** — `DraftRequest` / `EvidencePackage` / `Export` records,
   referencing the `action_evaluations` row whose `Actionable` result they
   were prepared from; a preparation can never reference a

@@ -4,6 +4,7 @@ use axum::Json;
 use chrono::{Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 use nexo_app::repository::{self, CaseRowId};
 use nexo_core::evaluate;
@@ -169,9 +170,9 @@ pub async fn evaluate_case(
     let case = CaseRowId(case_id);
     authorize_case(&state.pool, case, actor).await?;
 
-    let (projection_result, resolver) =
+    let (projection, resolver, manifest) =
         match projection::build_projection(&state.pool, case, &state.fixture).await {
-            Ok((projection, resolver)) => (Some(projection), resolver),
+            Ok(result) => result,
             Err(projection::ProjectionError::NoFactualSupportYet) => {
                 return Err((
                     StatusCode::UNPROCESSABLE_ENTITY,
@@ -180,7 +181,6 @@ pub async fn evaluate_case(
             }
             Err(err) => return Err(internal::<projection::ProjectionError>("could not build projection")(err)),
         };
-    let projection = projection_result.expect("checked above");
 
     // The core never reads an ambient clock (docs/CASE_GRAPH_CONTRACT.md,
     // "Time"); the adapter is exactly where "now" must be supplied from.
@@ -205,6 +205,8 @@ pub async fn evaluate_case(
     );
 
     let rendered = explain::render(&result, &resolver, &state.fixture);
+    let result_digest = result_digest(&rendered);
+    let input_manifest_digest = projection::input_manifest_digest(&manifest);
 
     let (result_kind, action_status, non_actionable_variant) = classify(&result);
 
@@ -227,12 +229,60 @@ pub async fn evaluate_case(
     )
     .await
     .map_err(internal("could not record evaluation"))?;
+    if result_kind == "actionable" && action_status == Some("supported") {
+        let input_manifest_digest = repository::upsert_digest(
+            &mut tx,
+            "sha256",
+            &input_manifest_digest,
+        )
+        .await
+        .map_err(internal("could not record input manifest digest"))?;
+        let result_digest = repository::upsert_digest(&mut tx, "sha256", &result_digest)
+            .await
+            .map_err(internal("could not record result digest"))?;
+        repository::insert_evaluation_receipt(
+            &mut tx,
+            evaluation,
+            case,
+            state.seeded.action_route,
+            state.seeded.policy_bundle,
+            input_manifest_digest,
+            result_digest,
+            projection::INPUT_MANIFEST_SCHEMA_VERSION,
+            1,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map_err(internal("could not record evaluation receipt"))?;
+    }
     tx.commit().await.map_err(internal("could not commit"))?;
 
     Ok(Json(EvaluateResponse {
         evaluation_id: evaluation.0,
         result: rendered,
     }))
+}
+
+fn canonical_json(value: &Value) -> nexo_integrity::CanonicalValue {
+    match value {
+        Value::Null => nexo_integrity::CanonicalValue::Null,
+        Value::Bool(value) => nexo_integrity::CanonicalValue::Bool(*value),
+        Value::Number(value) => nexo_integrity::CanonicalValue::Text(value.to_string()),
+        Value::String(value) => nexo_integrity::CanonicalValue::Text(value.clone()),
+        Value::Array(values) => nexo_integrity::CanonicalValue::List(
+            values.iter().map(canonical_json).collect(),
+        ),
+        Value::Object(values) => nexo_integrity::CanonicalValue::Map(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), canonical_json(value)))
+                .collect::<BTreeMap<_, _>>(),
+        ),
+    }
+}
+
+fn result_digest(value: &Value) -> String {
+    nexo_integrity::seal(&canonical_json(value)).to_string()
 }
 
 fn classify(

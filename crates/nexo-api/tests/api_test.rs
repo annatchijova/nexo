@@ -161,6 +161,13 @@ async fn full_flow_evidence_to_actionable_citation() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let evaluation = body_json(response).await;
+    let evaluation_id = evaluation["evaluation_id"].as_i64().unwrap();
+    assert!(repository::evaluation_receipt_exists(
+        &state.pool,
+        repository::ActionEvaluationRowId(evaluation_id),
+    )
+    .await
+    .unwrap());
     let result = &evaluation["result"];
     assert_eq!(result["kind"], "actionable");
     assert_eq!(result["status"], "supported");
@@ -252,6 +259,13 @@ async fn evaluation_without_confirmed_identity_is_insufficient_facts() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let evaluation = body_json(response).await;
+    let evaluation_id = evaluation["evaluation_id"].as_i64().unwrap();
+    assert!(!repository::evaluation_receipt_exists(
+        &state.pool,
+        repository::ActionEvaluationRowId(evaluation_id),
+    )
+    .await
+    .unwrap());
     assert_eq!(evaluation["result"]["kind"], "non_actionable");
     assert_eq!(evaluation["result"]["variant"], "insufficient_facts");
 }

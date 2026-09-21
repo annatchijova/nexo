@@ -64,6 +64,8 @@ pub struct NormativeClaimRowId(pub i64);
 pub struct ActionRouteRowId(pub i64);
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ActionEvaluationRowId(pub i64);
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct EvaluationReceiptRowId(pub i64);
 
 /// A case-graph node id: scoped to one case, assigned sequentially from 1,
 /// exactly matching `nexo_core::CaseGraph`'s own id-allocation rule.
@@ -585,6 +587,41 @@ pub async fn insert_action_evaluation(
     Ok(ActionEvaluationRowId(row.try_get("id")?))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_evaluation_receipt(
+    tx: &mut Tx<'_>,
+    evaluation: ActionEvaluationRowId,
+    case: CaseRowId,
+    route: ActionRouteRowId,
+    bundle: PolicyBundleRowId,
+    input_manifest_digest: DigestRowId,
+    result_digest: DigestRowId,
+    manifest_schema_version: i16,
+    result_schema_version: i16,
+    evaluator_version: &str,
+) -> Result<EvaluationReceiptRowId, RepoError> {
+    let row = sqlx::query(
+        "INSERT INTO evaluation_receipts
+            (action_evaluation_id, case_id, action_route_id, policy_bundle_id,
+             input_manifest_digest_id, result_digest_id, manifest_schema_version,
+             result_schema_version, evaluator_version)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id",
+    )
+    .bind(evaluation.0)
+    .bind(case.0)
+    .bind(route.0)
+    .bind(bundle.0)
+    .bind(input_manifest_digest.0)
+    .bind(result_digest.0)
+    .bind(manifest_schema_version)
+    .bind(result_schema_version)
+    .bind(evaluator_version)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(EvaluationReceiptRowId(row.try_get("id")?))
+}
+
 #[derive(Debug)]
 pub struct EvaluationRow {
     pub id: i64,
@@ -622,4 +659,19 @@ pub async fn list_evaluations_for_case(
             result_payload: r.get("result_payload"),
         })
         .collect())
+}
+
+pub async fn evaluation_receipt_exists(
+    pool: &Pool,
+    evaluation: ActionEvaluationRowId,
+) -> Result<bool, RepoError> {
+    let row = sqlx::query(
+        "SELECT EXISTS(
+            SELECT 1 FROM evaluation_receipts WHERE action_evaluation_id = $1
+         ) AS exists",
+    )
+    .bind(evaluation.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get("exists"))
 }

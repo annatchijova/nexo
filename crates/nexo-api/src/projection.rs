@@ -3,9 +3,11 @@
 //! result afterward (see `explain.rs`).
 
 use core::num::NonZeroU64;
+use std::collections::BTreeMap;
 
 use nexo_core::{CaseProjection, FactualSupport, NodeId, RequirementId};
 use nexo_app::repository::{self, CaseRowId, Pool};
+use nexo_integrity::{seal, CanonicalValue};
 
 use crate::explain::NodeIdResolver;
 
@@ -17,6 +19,38 @@ pub enum ProjectionError {
     /// at least one; a case with nothing in it cannot be evaluated.
     NoFactualSupportYet,
     Core(nexo_core::ProjectionError),
+}
+
+pub const INPUT_MANIFEST_SCHEMA_VERSION: i16 = 1;
+
+pub struct InputManifest {
+    nodes: Vec<repository::CaseNodeSummary>,
+}
+
+pub fn input_manifest_digest(manifest: &InputManifest) -> String {
+    let nodes = manifest
+        .nodes
+        .iter()
+        .map(|node| {
+            let mut fields = BTreeMap::new();
+            fields.insert("case_node_id".into(), CanonicalValue::I64(node.node_id));
+            fields.insert("kind".into(), CanonicalValue::Text(node.kind.clone()));
+            fields.insert(
+                "confirmed".into(),
+                node.confirmed
+                    .map(CanonicalValue::Bool)
+                    .unwrap_or(CanonicalValue::Null),
+            );
+            CanonicalValue::Map(fields)
+        })
+        .collect();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "schema_version".into(),
+        CanonicalValue::U64(INPUT_MANIFEST_SCHEMA_VERSION as u64),
+    );
+    fields.insert("nodes".into(), CanonicalValue::List(nodes));
+    seal(&CanonicalValue::Map(fields)).to_string()
 }
 
 impl From<repository::RepoError> for ProjectionError {
@@ -42,7 +76,7 @@ pub async fn build_projection(
     pool: &Pool,
     case: CaseRowId,
     fixture: &nexo_policy_ar::Fixture,
-) -> Result<(CaseProjection, NodeIdResolver), ProjectionError> {
+) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
     let nodes = repository::list_case_nodes_with_kind(pool, case).await?;
 
     let mut resolver = NodeIdResolver::default();
@@ -86,5 +120,5 @@ pub async fn build_projection(
     )
     .map_err(ProjectionError::Core)?;
 
-    Ok((projection, resolver))
+    Ok((projection, resolver, InputManifest { nodes }))
 }

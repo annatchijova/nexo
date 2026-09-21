@@ -19,7 +19,8 @@ pub struct IdentifiedActionOption {
     identity: NodeId,
 }
 
-/// Capability intended to be emitted by the evaluation/application boundary.
+/// Capability intended to be emitted by the evaluation/application boundary;
+/// see `docs/adr/0011-evaluation-receipt-before-preparation.md`.
 /// Its fields are private so preparation cannot be assembled from
 /// independently supplied action, snapshot, policy, and input references.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -244,6 +244,30 @@ create table policy_bundle_activations (
 create index policy_bundle_activations_bundle_idx
     on policy_bundle_activations (policy_bundle_id);
 
+-- Activation freezes the exact policy identity used by later evaluations and
+-- receipts. Without this trigger, an UPDATE could silently rewrite the
+-- policy behind an already-issued binding evidence row.
+create function activated_policy_bundle_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations
+        where policy_bundle_id = old.id
+    ) then
+        raise exception
+            'activated policy bundle % is immutable',
+            old.id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger activated_policy_bundle_is_immutable_trigger
+    before update on policy_bundles
+    for each row execute function activated_policy_bundle_is_immutable();
+
 create table normative_claims (
     id                  bigint generated always as identity primary key,
     policy_bundle_id    bigint not null references policy_bundles (id),
@@ -253,6 +277,51 @@ create table normative_claims (
     validity_to          date,
     check (validity_to is null or validity_to >= validity_from)
 );
+
+create function normative_claim_matches_bundle_jurisdiction()
+returns trigger as $$
+declare
+    bundle_jurisdiction text;
+begin
+    select jurisdiction into bundle_jurisdiction
+    from policy_bundles
+    where id = new.policy_bundle_id;
+
+    if bundle_jurisdiction is null
+       or bundle_jurisdiction is distinct from new.jurisdiction then
+        raise exception
+            'normative claim % does not match policy bundle jurisdiction',
+            new.id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger normative_claim_matches_bundle_jurisdiction_trigger
+    before insert or update on normative_claims
+    for each row execute function normative_claim_matches_bundle_jurisdiction();
+
+create function activated_normative_claim_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations
+        where policy_bundle_id = old.policy_bundle_id
+    ) then
+        raise exception
+            'normative claim % in an activated policy bundle is immutable',
+            old.id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger activated_normative_claim_is_immutable_trigger
+    before update or delete on normative_claims
+    for each row execute function activated_normative_claim_is_immutable();
 
 create index normative_claims_bundle_idx on normative_claims (policy_bundle_id);
 
@@ -279,12 +348,113 @@ create table action_routes (
     title                text not null check (title <> '')
 );
 
+create function action_route_matches_bundle_jurisdiction()
+returns trigger as $$
+declare
+    bundle_jurisdiction text;
+begin
+    select jurisdiction into bundle_jurisdiction
+    from policy_bundles
+    where id = new.policy_bundle_id;
+
+    if bundle_jurisdiction is null
+       or bundle_jurisdiction is distinct from new.jurisdiction then
+        raise exception
+            'action route % does not match policy bundle jurisdiction',
+            new.id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger action_route_matches_bundle_jurisdiction_trigger
+    before insert or update on action_routes
+    for each row execute function action_route_matches_bundle_jurisdiction();
+
+create function activated_action_route_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations activation
+        join action_routes route on route.policy_bundle_id = activation.policy_bundle_id
+        where route.id = coalesce(old.id, new.id)
+    ) then
+        raise exception
+            'action route % in an activated policy bundle is immutable',
+            coalesce(old.id, new.id);
+    end if;
+
+    return coalesce(new, old);
+end;
+$$ language plpgsql;
+
+create trigger activated_action_route_is_immutable_trigger
+    before update or delete on action_routes
+    for each row execute function activated_action_route_is_immutable();
+
 create table action_route_claims (
     route_id            bigint not null references action_routes (id),
     claim_id             bigint not null references normative_claims (id),
     ordinal              integer not null check (ordinal >= 0),
     primary key (route_id, claim_id)
 );
+
+-- A route's claims are interpreted under the route's policy bundle. A plain
+-- pair of foreign keys would allow a claim from a different bundle, silently
+-- mixing policy versions inside one action route.
+create function action_route_claim_matches_bundle()
+returns trigger as $$
+declare
+    route_bundle_id bigint;
+    claim_bundle_id bigint;
+begin
+    select policy_bundle_id into route_bundle_id
+    from action_routes
+    where id = new.route_id;
+
+    select policy_bundle_id into claim_bundle_id
+    from normative_claims
+    where id = new.claim_id;
+
+    if route_bundle_id is null
+       or claim_bundle_id is null
+       or route_bundle_id is distinct from claim_bundle_id then
+        raise exception
+            'action route % claim % does not match route policy bundle',
+            new.route_id, new.claim_id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger action_route_claim_matches_bundle_trigger
+    before insert or update on action_route_claims
+    for each row execute function action_route_claim_matches_bundle();
+
+create function activated_action_route_claims_are_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations activation
+        join action_routes route on route.policy_bundle_id = activation.policy_bundle_id
+        where route.id = coalesce(old.route_id, new.route_id)
+    ) then
+        raise exception
+            'claims of action route % in an activated policy bundle are immutable',
+            coalesce(old.route_id, new.route_id);
+    end if;
+
+    return coalesce(new, old);
+end;
+$$ language plpgsql;
+
+create trigger activated_action_route_claims_are_immutable_trigger
+    before update or delete on action_route_claims
+    for each row execute function activated_action_route_claims_are_immutable();
 
 create table action_route_requirements (
     id                  bigint generated always as identity primary key,
@@ -336,6 +506,83 @@ create table action_evaluations (
 
 create index action_evaluations_case_id_idx on action_evaluations (case_id);
 create index action_evaluations_route_id_idx on action_evaluations (route_id);
+
+-- The route carries the policy bundle that defined its claims and meaning.
+-- Keep the duplicated bundle reference on an evaluation tied to that route;
+-- otherwise a caller could seal a result under one policy while naming a
+-- route from another policy.
+create function action_evaluation_matches_route_bundle()
+returns trigger as $$
+declare
+    route action_routes%rowtype;
+begin
+    select * into route
+    from action_routes
+    where id = new.route_id;
+
+    if route.id is null
+       or route.policy_bundle_id is distinct from new.policy_bundle_id then
+        raise exception
+            'action evaluation % does not match route % policy bundle',
+            new.id, new.route_id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger action_evaluation_matches_route_bundle_trigger
+    before insert or update on action_evaluations
+    for each row execute function action_evaluation_matches_route_bundle();
+
+-- Binding evidence for a future preparation capability. This receipt is not
+-- itself a VerifiedPreparationSnapshot; it records the durable relations the
+-- application must prove before crossing into nexo-core preparation.
+create table evaluation_receipts (
+    id                         bigint generated always as identity primary key,
+    action_evaluation_id      bigint not null unique references action_evaluations (id),
+    case_id                   bigint not null references cases (id),
+    action_route_id           bigint not null references action_routes (id),
+    policy_bundle_id          bigint not null references policy_bundles (id),
+    input_manifest_digest_id  bigint not null references digests (id),
+    result_digest_id          bigint not null references digests (id),
+    manifest_schema_version   smallint not null check (manifest_schema_version >= 0),
+    result_schema_version     smallint not null check (result_schema_version >= 0),
+    evaluator_version         text not null check (evaluator_version <> ''),
+    recorded_at               timestamptz not null default now()
+);
+
+create index evaluation_receipts_case_id_idx on evaluation_receipts (case_id);
+
+create function evaluation_receipt_matches_evaluation()
+returns trigger as $$
+declare
+    evaluation action_evaluations%rowtype;
+begin
+    select * into evaluation
+    from action_evaluations
+    where id = new.action_evaluation_id;
+
+    if evaluation.id is null
+       or new.case_id <> evaluation.case_id
+       or new.action_route_id <> evaluation.route_id
+       or new.policy_bundle_id <> evaluation.policy_bundle_id
+       or evaluation.result_kind <> 'actionable'
+       or evaluation.action_status is distinct from 'supported'::action_status
+       or new.result_schema_version <> evaluation.result_schema_version
+       or new.evaluator_version <> evaluation.evaluator_version then
+        raise exception
+            'evaluation receipt does not match action evaluation %',
+            new.action_evaluation_id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger evaluation_receipt_matches_evaluation_trigger
+    before insert or update on evaluation_receipts
+    for each row execute function evaluation_receipt_matches_evaluation();
 
 -- ---------------------------------------------------------------------
 -- Preparations (docs/ARCHITECTURE.md "Preparation boundary")

@@ -337,6 +337,54 @@ create table normative_claim_sources (
     primary key (claim_id, source_id)
 );
 
+create function activated_claim_source_edge_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations activation
+        join normative_claims claim
+          on claim.policy_bundle_id = activation.policy_bundle_id
+        where claim.id = coalesce(old.claim_id, new.claim_id)
+    ) then
+        raise exception
+            'sources of claim % in an activated policy bundle are immutable',
+            coalesce(old.claim_id, new.claim_id);
+    end if;
+
+    return coalesce(new, old);
+end;
+$$ language plpgsql;
+
+create trigger activated_claim_source_edge_is_immutable_trigger
+    before insert or update or delete on normative_claim_sources
+    for each row execute function activated_claim_source_edge_is_immutable();
+
+create function activated_normative_source_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations activation
+        join normative_claims claim
+          on claim.policy_bundle_id = activation.policy_bundle_id
+        join normative_claim_sources claim_source
+          on claim_source.claim_id = claim.id
+        where claim_source.source_id = old.id
+    ) then
+        raise exception
+            'normative source % used by an activated claim is immutable',
+            old.id;
+    end if;
+
+    return old;
+end;
+$$ language plpgsql;
+
+create trigger activated_normative_source_is_immutable_trigger
+    before update or delete on normative_sources
+    for each row execute function activated_normative_source_is_immutable();
+
 -- ---------------------------------------------------------------------
 -- Action routes and evaluations
 -- ---------------------------------------------------------------------

@@ -62,8 +62,6 @@ pub async fn seed_ar_bundle(
         provenance,
     )
     .await?;
-    repository::activate_policy_bundle(&mut tx, policy_bundle, seeded_by).await?;
-
     let source = repository::insert_normative_source(
         &mut tx,
         "primary_official",
@@ -101,6 +99,7 @@ pub async fn seed_ar_bundle(
         &claim_rows,
     )
     .await?;
+    repository::activate_policy_bundle(&mut tx, policy_bundle, seeded_by).await?;
 
     tx.commit().await?;
 

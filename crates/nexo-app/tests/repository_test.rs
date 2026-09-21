@@ -268,10 +268,6 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     )
     .await
     .unwrap();
-    repository::activate_policy_bundle(&mut tx, bundle, actor)
-        .await
-        .unwrap();
-
     let source = repository::insert_normative_source(
         &mut tx,
         "primary_official",
@@ -299,6 +295,9 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let route = repository::insert_action_route(&mut tx, bundle, "AR", "test route", &[claim])
         .await
         .unwrap();
+    repository::activate_policy_bundle(&mut tx, bundle, actor)
+        .await
+        .unwrap();
 
     let bundle_two = repository::insert_policy_bundle(
         &mut tx,
@@ -313,9 +312,6 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     )
     .await
     .unwrap();
-    repository::activate_policy_bundle(&mut tx, bundle_two, actor)
-        .await
-        .unwrap();
     let claim_two = repository::insert_normative_claim(
         &mut tx,
         bundle_two,
@@ -336,6 +332,9 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     )
     .await
     .unwrap();
+    repository::activate_policy_bundle(&mut tx, bundle_two, actor)
+        .await
+        .unwrap();
 
     let payload = json!({"factual_support": [{"artifact": 1}]});
     let evaluation = repository::insert_action_evaluation(
@@ -481,6 +480,35 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "a claim in an activated policy bundle must be immutable"
     );
     activated_claim_update_tx.rollback().await.unwrap();
+
+    let mut activated_route_claim_delete_tx = pool.begin().await.unwrap();
+    let activated_route_claim_delete = sqlx::query(
+        "DELETE FROM action_route_claims
+         WHERE route_id = $1 AND claim_id = $2",
+    )
+    .bind(route.0)
+    .bind(claim.0)
+    .execute(&mut *activated_route_claim_delete_tx)
+    .await;
+    assert!(
+        activated_route_claim_delete.is_err(),
+        "claims of an activated route must not be removable"
+    );
+    activated_route_claim_delete_tx.rollback().await.unwrap();
+
+    let mut activated_source_update_tx = pool.begin().await.unwrap();
+    let activated_source_update = sqlx::query(
+        "UPDATE normative_sources SET locator = 'https://tampered.example'
+         WHERE id = $1",
+    )
+    .bind(source.0)
+    .execute(&mut *activated_source_update_tx)
+    .await;
+    assert!(
+        activated_source_update.is_err(),
+        "a source used by an activated claim must be immutable"
+    );
+    activated_source_update_tx.rollback().await.unwrap();
 
     assert!(receipt.0 > 0);
 

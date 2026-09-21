@@ -56,7 +56,7 @@ The adversarial test remains and passes after the fix.
 
 ### RT-023-02 — Policy bundle references could be mixed across route claims and evaluations
 
-**Severity:** high integrity boundary  **Level:** CONFIRMED BY INDUCTION  
+**Severity:** high integrity boundary  **Level:** CONFIRMED BY INDUCTION
 **Bucket:** software invariant defect
 
 **Expectation:** every action route and every evaluation must resolve to one
@@ -127,6 +127,24 @@ same row identifiers while the policy meaning changed underneath it.
 **Correction:** database triggers now reject updates and deletes for routes,
 route-claim edges, and claims belonging to activated bundles. The adversarial
 updates are rolled back and the repository suite passes.
+
+### RT-023-06 — Activated claim support sources were mutable
+
+**Severity:** high integrity boundary  **Level:** CONFIRMED BY INDUCTION
+**Bucket:** software invariant defect
+
+**Expectation:** the captured normative source and its claim-support edges
+remain fixed once the containing bundle is activated.
+
+**Induction:** a repository probe updated the locator of a source referenced by
+an activated claim. Before the correction, the update succeeded. The
+hardening test also exposed that the seed path activated bundles before
+finishing their child rows, so construction order was corrected to complete
+the policy graph before activation.
+
+**Correction:** source rows and claim-source edges used by activated claims
+are immutable; the seed and repository fixtures now activate only after the
+complete policy graph is constructed.
 
 ## Discarded vectors
 

@@ -352,6 +352,7 @@ pub async fn list_case_node_ids(pool: &Pool, case: CaseRowId) -> Result<Vec<i64>
 pub struct CaseNodeSummary {
     pub node_id: i64,
     pub kind: String,
+    pub created_at: DateTime<Utc>,
     /// `Some(confirmed)` for a `user_assertion` node, `None` for every
     /// other kind.
     pub confirmed: Option<bool>,
@@ -362,7 +363,7 @@ pub async fn list_case_nodes_with_kind(
     case: CaseRowId,
 ) -> Result<Vec<CaseNodeSummary>, RepoError> {
     let rows = sqlx::query(
-        "SELECT n.node_id, n.kind::text AS kind,
+        "SELECT n.node_id, n.kind::text AS kind, n.created_at,
                 (u.confirmation = 'confirmed') AS confirmed
          FROM case_nodes n
          LEFT JOIN user_assertion_nodes u
@@ -378,6 +379,7 @@ pub async fn list_case_nodes_with_kind(
         .map(|r| CaseNodeSummary {
             node_id: r.get("node_id"),
             kind: r.get("kind"),
+            created_at: r.get("created_at"),
             confirmed: r.get("confirmed"),
         })
         .collect())

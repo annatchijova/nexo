@@ -39,6 +39,7 @@ pub async fn create_case(
 pub struct CaseNodeResponse {
     pub node_id: i64,
     pub kind: String,
+    pub created_at: chrono::DateTime<Utc>,
     pub confirmed: Option<bool>,
 }
 
@@ -66,6 +67,7 @@ pub async fn read_case(
             .map(|node| CaseNodeResponse {
                 node_id: node.node_id,
                 kind: node.kind,
+                created_at: node.created_at,
                 confirmed: node.confirmed,
             })
             .collect(),

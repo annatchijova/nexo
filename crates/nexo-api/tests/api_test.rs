@@ -311,6 +311,7 @@ async fn owner_can_read_case_graph_and_other_actor_cannot() {
     assert_eq!(case["case_id"], case_id);
     assert_eq!(case["nodes"].as_array().unwrap().len(), 1);
     assert_eq!(case["nodes"][0]["kind"], "user_assertion");
+    assert!(case["nodes"][0]["created_at"].as_str().is_some());
     assert_eq!(case["nodes"][0]["confirmed"], true);
 
     let response = app

@@ -32,8 +32,10 @@ pub struct VerifiedPreparationSnapshot {
 }
 
 impl VerifiedPreparationSnapshot {
-    #[allow(dead_code)]
-    pub(crate) fn from_verified_evaluation(
+    /// Crosses the explicit application-to-core bridge after the application
+    /// has verified durable ownership, evaluation identity, receipt state, and
+    /// digest bindings. Callers must not pass request-supplied IDs here.
+    pub fn from_application_verified_evaluation(
         action: IdentifiedActionOption,
         evaluation_snapshot: NodeId,
         policy_bundle_digest: DigestId,

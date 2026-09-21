@@ -9,6 +9,7 @@ pub mod auth;
 pub mod evidence;
 pub mod explain;
 pub mod handlers;
+pub mod preparation;
 pub mod projection;
 pub mod seed;
 

@@ -22,8 +22,9 @@ binds the exact evaluation, action route, owning case, immutable policy-bundle
 digest, and canonical input-manifest digest. The detailed contract is in
 `docs/EVALUATION_RECEIPT_CONTRACT.md`.
 
-Until that producer exists, NEXO will not expose preparation or export
-endpoints, and the existing public preparation shim remains fail-closed.
+The producer now exists as an explicit application-owned bridge, but NEXO
+still does not expose preparation or export endpoints until output generation
+and lifecycle persistence are implemented.
 
 ## Alternatives rejected
 
@@ -48,9 +49,9 @@ verification obligations must be added to the contract before it ships.
 
 ## Consequences
 
-Accepted now: Step 7 remains partially deferred; no preparation demo endpoint
-exists yet. The product has a safe evaluation-to-UI slice rather than a
-plausible but weak preparation path.
+Accepted now: the application can mint a verified core snapshot only after
+the durable receipt and ownership checks pass. Step 7 remains partially
+deferred; no preparation demo endpoint exists yet.
 
 Deferred: receipt persistence, canonical manifest construction, capability
 minting, output-artifact generation, and preparation API/UI flows.
@@ -63,7 +64,8 @@ more expressive action identity than the current route row.
 
 ## Anchored at
 
-- `crates/nexo-core/src/preparation.rs` — private verified-snapshot producer
+- `crates/nexo-core/src/preparation.rs` — explicit application bridge into the
+  verified snapshot type
   boundary.
 - `docs/adr/0010-preparation-binding-ownership.md` — prior decision that
   deferred production minting until application evidence exists.

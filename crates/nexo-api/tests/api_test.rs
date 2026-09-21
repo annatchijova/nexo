@@ -12,6 +12,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -204,6 +205,50 @@ async fn full_flow_evidence_to_actionable_citation() {
     let listed = listed.as_array().unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0]["result"], evaluation["result"]);
+
+    // The application-owned bridge can mint a snapshot only for the case
+    // owner; no request-supplied IDs are accepted as preparation authority.
+    let owner = repository::find_actor_by_identity(&state.pool, &token)
+        .await
+        .unwrap()
+        .unwrap();
+    let action = nexo_core::ActionOption::try_new(
+        nexo_core::ActionStatus::Supported,
+        vec![nexo_core::FactualSupport::Artifact(nexo_core::NodeId::new(
+            NonZeroU64::new(1).unwrap(),
+        ))],
+        vec![nexo_core::NormativeClaimId::new(nexo_core::NodeId::new(
+            NonZeroU64::new(1).unwrap(),
+        ))],
+        Vec::new(),
+    )
+    .unwrap();
+    let snapshot = nexo_api::preparation::verify_receipt_and_mint_snapshot(
+        &state.pool,
+        owner,
+        repository::CaseRowId(case_id),
+        repository::ActionEvaluationRowId(evaluation_id),
+        action.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(snapshot.action().action().is_available());
+
+    let foreign = repository::create_actor(&state.pool, "foreign-preparation-owner")
+        .await
+        .unwrap();
+    let rejected = nexo_api::preparation::verify_receipt_and_mint_snapshot(
+        &state.pool,
+        foreign,
+        repository::CaseRowId(case_id),
+        repository::ActionEvaluationRowId(evaluation_id),
+        action,
+    )
+    .await;
+    assert!(matches!(
+        rejected,
+        Err(nexo_api::preparation::PreparationVerificationError::CaseNotOwned)
+    ));
 }
 
 #[tokio::test]

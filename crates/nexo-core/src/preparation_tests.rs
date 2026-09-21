@@ -26,7 +26,7 @@ fn plan() -> PreparationPlan {
     )
     .unwrap();
     let identified = action.with_identity(node(1));
-    let snapshot = VerifiedPreparationSnapshot::from_verified_evaluation(
+    let snapshot = VerifiedPreparationSnapshot::from_application_verified_evaluation(
         identified,
         node(2),
         digest(3),
@@ -46,7 +46,7 @@ fn unsupported_or_conditional_actions_cannot_authorize_a_plan() {
     )
     .unwrap();
     let identified = conditional.with_identity(node(1));
-    let snapshot = VerifiedPreparationSnapshot::from_verified_evaluation(
+    let snapshot = VerifiedPreparationSnapshot::from_application_verified_evaluation(
         identified,
         node(2),
         digest(3),

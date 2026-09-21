@@ -634,6 +634,56 @@ pub struct EvaluationRow {
     pub result_payload: JsonValue,
 }
 
+#[derive(Debug)]
+pub struct EvaluationReceiptBinding {
+    pub evaluation_id: i64,
+    pub route_id: i64,
+    pub policy_bundle_id: i64,
+    pub policy_bundle_digest_id: i64,
+    pub input_manifest_digest_id: i64,
+    pub result_digest_id: i64,
+    pub result_kind: String,
+    pub action_status: Option<String>,
+}
+
+/// Returns only a receipt-backed evaluation binding. The join deliberately
+/// resolves the policy digest from the immutable bundle row instead of
+/// accepting it as a caller-supplied argument.
+pub async fn find_evaluation_receipt_binding(
+    pool: &Pool,
+    case: CaseRowId,
+    evaluation: ActionEvaluationRowId,
+) -> Result<Option<EvaluationReceiptBinding>, RepoError> {
+    let row = sqlx::query(
+        "SELECT e.id, e.route_id, e.policy_bundle_id,
+                bundle.digest_id AS policy_bundle_digest_id,
+                receipt.input_manifest_digest_id,
+                receipt.result_digest_id,
+                e.result_kind::text, e.action_status::text
+         FROM action_evaluations e
+         JOIN evaluation_receipts receipt
+           ON receipt.action_evaluation_id = e.id
+         JOIN policy_bundles bundle
+           ON bundle.id = e.policy_bundle_id
+         WHERE e.id = $1
+           AND e.case_id = $2",
+    )
+    .bind(evaluation.0)
+    .bind(case.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| EvaluationReceiptBinding {
+        evaluation_id: row.get("id"),
+        route_id: row.get("route_id"),
+        policy_bundle_id: row.get("policy_bundle_id"),
+        policy_bundle_digest_id: row.get("policy_bundle_digest_id"),
+        input_manifest_digest_id: row.get("input_manifest_digest_id"),
+        result_digest_id: row.get("result_digest_id"),
+        result_kind: row.get("result_kind"),
+        action_status: row.get("action_status"),
+    }))
+}
+
 pub async fn list_evaluations_for_case(
     pool: &Pool,
     case: CaseRowId,

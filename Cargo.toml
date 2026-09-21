@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/nexo-core", "crates/nexo-integrity", "crates/nexo-policy-bridge"]
+members = ["crates/nexo-core", "crates/nexo-integrity", "crates/nexo-policy-bridge", "crates/nexo-app"]
 resolver = "3"
 
 [workspace.package]

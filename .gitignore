@@ -9,3 +9,4 @@
 *.sqlite
 *.sqlite3
 coverage/
+/plan.md

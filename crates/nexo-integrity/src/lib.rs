@@ -193,6 +193,140 @@ fn encode(value: &CanonicalValue, out: &mut Vec<u8>) {
     }
 }
 
+/// Schema version for [`Manifest`]'s canonical form. A future incompatible
+/// manifest shape bumps this; a reader must reject an unknown version rather
+/// than guess its layout, mirroring `PolicySchemaVersion` in `nexo-core`.
+pub const MANIFEST_SCHEMA_VERSION: u64 = 1;
+
+/// One named artifact digest included in an export.
+///
+/// `label` identifies the artifact's role within the export (for example a
+/// graph-node reference rendered by the application layer); this crate does
+/// not know or depend on `nexo-core`'s id types, so the label is an opaque,
+/// non-empty string supplied by the caller.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManifestEntry {
+    label: String,
+    digest: Sha256Digest,
+}
+
+impl ManifestEntry {
+    pub fn new(label: impl Into<String>, digest: Sha256Digest) -> Self {
+        Self {
+            label: label.into(),
+            digest,
+        }
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn digest(&self) -> Sha256Digest {
+        self.digest
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ManifestError {
+    EmptyArtifacts,
+    EmptyLabel,
+    DuplicateLabel,
+}
+
+/// A versioned, canonical export manifest: it names every artifact digest
+/// and the policy-bundle digest an export depended on, per
+/// `docs/ARCHITECTURE.md`'s "Data ownership" section.
+///
+/// This type only hashes and canonicalizes; it performs no I/O, opens no
+/// files, and reads no clock (`generated_at_unix_seconds` is supplied by the
+/// caller), consistent with ADR 0003. Entries are stored sorted by label so
+/// that two manifests built from the same content in a different insertion
+/// order seal to the same digest — manifest identity is the content, not
+/// the order an adapter happened to collect it in.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Manifest {
+    case_reference: u64,
+    generated_at_unix_seconds: i64,
+    artifacts: Vec<ManifestEntry>,
+    policy_bundle_digest: Sha256Digest,
+}
+
+impl Manifest {
+    pub fn try_new(
+        case_reference: u64,
+        generated_at_unix_seconds: i64,
+        mut artifacts: Vec<ManifestEntry>,
+        policy_bundle_digest: Sha256Digest,
+    ) -> Result<Self, ManifestError> {
+        if artifacts.is_empty() {
+            return Err(ManifestError::EmptyArtifacts);
+        }
+        if artifacts.iter().any(|entry| entry.label.is_empty()) {
+            return Err(ManifestError::EmptyLabel);
+        }
+        artifacts.sort_by(|a, b| a.label.cmp(&b.label));
+        if artifacts.windows(2).any(|pair| pair[0].label == pair[1].label) {
+            return Err(ManifestError::DuplicateLabel);
+        }
+        Ok(Self {
+            case_reference,
+            generated_at_unix_seconds,
+            artifacts,
+            policy_bundle_digest,
+        })
+    }
+
+    pub fn artifacts(&self) -> &[ManifestEntry] {
+        &self.artifacts
+    }
+
+    pub const fn policy_bundle_digest(&self) -> Sha256Digest {
+        self.policy_bundle_digest
+    }
+
+    fn canonical_value(&self) -> CanonicalValue {
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            "schema_version".into(),
+            CanonicalValue::U64(MANIFEST_SCHEMA_VERSION),
+        );
+        fields.insert(
+            "case_reference".into(),
+            CanonicalValue::U64(self.case_reference),
+        );
+        fields.insert(
+            "generated_at_unix_seconds".into(),
+            CanonicalValue::I64(self.generated_at_unix_seconds),
+        );
+        fields.insert(
+            "policy_bundle_digest".into(),
+            CanonicalValue::Bytes(self.policy_bundle_digest.as_bytes().to_vec()),
+        );
+        let artifacts = self
+            .artifacts
+            .iter()
+            .map(|entry| {
+                let mut entry_fields = BTreeMap::new();
+                entry_fields.insert("label".into(), CanonicalValue::Text(entry.label.clone()));
+                entry_fields.insert(
+                    "digest".into(),
+                    CanonicalValue::Bytes(entry.digest.as_bytes().to_vec()),
+                );
+                CanonicalValue::Map(entry_fields)
+            })
+            .collect();
+        fields.insert("artifacts".into(), CanonicalValue::List(artifacts));
+        CanonicalValue::Map(fields)
+    }
+
+    /// Seals this manifest's canonical bytes. Two manifests are the same
+    /// export identity if and only if this digest matches.
+    pub fn seal(&self) -> Sha256Digest {
+        seal(&self.canonical_value())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +425,95 @@ mod tests {
             verify_audit(&unlinked, receipt),
             Err(AuditVerificationError::Link { index: 1 })
         );
+    }
+
+    fn sample_manifest(artifacts: Vec<ManifestEntry>) -> Manifest {
+        Manifest::try_new(1, 1_700_000_000, artifacts, hash_bytes(b"bundle-v1")).unwrap()
+    }
+
+    #[test]
+    fn manifest_seal_is_independent_of_entry_insertion_order() {
+        let forward = sample_manifest(vec![
+            ManifestEntry::new("a", hash_bytes(b"a")),
+            ManifestEntry::new("b", hash_bytes(b"b")),
+        ]);
+        let reversed = sample_manifest(vec![
+            ManifestEntry::new("b", hash_bytes(b"b")),
+            ManifestEntry::new("a", hash_bytes(b"a")),
+        ]);
+        assert_eq!(forward.seal(), reversed.seal());
+    }
+
+    #[test]
+    fn manifest_seal_changes_if_one_artifact_digest_changes() {
+        let original = sample_manifest(vec![ManifestEntry::new("a", hash_bytes(b"a"))]);
+        let tampered = sample_manifest(vec![ManifestEntry::new("a", hash_bytes(b"a-tampered"))]);
+        assert_ne!(original.seal(), tampered.seal());
+    }
+
+    #[test]
+    fn manifest_seal_changes_if_policy_bundle_digest_changes() {
+        let a = Manifest::try_new(
+            1,
+            1_700_000_000,
+            vec![ManifestEntry::new("a", hash_bytes(b"a"))],
+            hash_bytes(b"bundle-v1"),
+        )
+        .unwrap();
+        let b = Manifest::try_new(
+            1,
+            1_700_000_000,
+            vec![ManifestEntry::new("a", hash_bytes(b"a"))],
+            hash_bytes(b"bundle-v2"),
+        )
+        .unwrap();
+        assert_ne!(a.seal(), b.seal());
+    }
+
+    #[test]
+    fn manifest_rejects_empty_artifacts() {
+        let result = Manifest::try_new(1, 0, vec![], hash_bytes(b"bundle-v1"));
+        assert_eq!(result.unwrap_err(), ManifestError::EmptyArtifacts);
+    }
+
+    #[test]
+    fn manifest_rejects_empty_label() {
+        let result = Manifest::try_new(
+            1,
+            0,
+            vec![ManifestEntry::new("", hash_bytes(b"a"))],
+            hash_bytes(b"bundle-v1"),
+        );
+        assert_eq!(result.unwrap_err(), ManifestError::EmptyLabel);
+    }
+
+    #[test]
+    fn manifest_rejects_duplicate_label() {
+        let result = Manifest::try_new(
+            1,
+            0,
+            vec![
+                ManifestEntry::new("a", hash_bytes(b"one")),
+                ManifestEntry::new("a", hash_bytes(b"two")),
+            ],
+            hash_bytes(b"bundle-v1"),
+        );
+        assert_eq!(result.unwrap_err(), ManifestError::DuplicateLabel);
+    }
+
+    #[test]
+    fn manifest_reordering_a_tail_of_matching_labels_cannot_hide_a_swap() {
+        // Two artifacts whose labels sort adjacently but whose digests are
+        // swapped must not seal identically to the original: sorting by
+        // label must not lose which digest belonged to which label.
+        let original = sample_manifest(vec![
+            ManifestEntry::new("a", hash_bytes(b"first")),
+            ManifestEntry::new("b", hash_bytes(b"second")),
+        ]);
+        let swapped_digests = sample_manifest(vec![
+            ManifestEntry::new("a", hash_bytes(b"second")),
+            ManifestEntry::new("b", hash_bytes(b"first")),
+        ]);
+        assert_ne!(original.seal(), swapped_digests.seal());
     }
 }

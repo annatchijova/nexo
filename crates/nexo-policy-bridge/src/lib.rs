@@ -97,4 +97,116 @@ mod tests {
         );
         assert_eq!(result.unwrap_err(), CaptureVerificationError::DigestMismatch);
     }
+
+    // The remaining tests close CAPTURE_ATTESTATION_CONTRACT.md's "Required
+    // evidence" list, which named these cases explicitly but did not yet
+    // have them all present in this suite.
+
+    #[test]
+    fn known_sha256_vector_attests() {
+        // NIST/RFC test vector: SHA-256("abc") = ba7816bf8f01cfea...
+        let expected_hex =
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let bytes = b"abc";
+        let expected = hash_bytes(bytes);
+        assert_eq!(expected.to_string(), expected_hex);
+
+        let attestation = attest_capture(
+            bytes,
+            expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert!(attestation.is_ok());
+    }
+
+    #[test]
+    fn line_ending_mutation_cannot_attest() {
+        let unix = b"line one\nline two\n";
+        let crlf = b"line one\r\nline two\r\n";
+        let expected = hash_bytes(unix);
+        let result = attest_capture(
+            crlf,
+            expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert_eq!(result.unwrap_err(), CaptureVerificationError::DigestMismatch);
+    }
+
+    #[test]
+    fn digest_reference_mismatch_cannot_attest() {
+        // Correct, self-consistent bytes and digest for a *different* capture
+        // supplied as the "expected" digest for these bytes: the bridge must
+        // reject on the mismatch, not accept because both sides are
+        // individually well-formed hashes.
+        let bytes = b"policy-v1";
+        let unrelated_expected = hash_bytes(b"an unrelated document");
+        let result = attest_capture(
+            bytes,
+            unrelated_expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert_eq!(result.unwrap_err(), CaptureVerificationError::DigestMismatch);
+    }
+
+    #[test]
+    fn replay_with_changed_bytes_is_rejected_even_with_prior_success() {
+        // A capture that verified once must not make a later, different byte
+        // stream verify against the same expected digest: the bridge
+        // recomputes on every call and carries no state between them.
+        let original = b"policy-v1";
+        let expected = hash_bytes(original);
+        let first = attest_capture(
+            original,
+            expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert!(first.is_ok());
+
+        let replayed_with_different_bytes = b"policy-v1-tampered";
+        let second = attest_capture(
+            replayed_with_different_bytes,
+            expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert_eq!(
+            second.unwrap_err(),
+            CaptureVerificationError::DigestMismatch
+        );
+    }
+
+    #[test]
+    fn serialized_verified_flag_without_bridge_call_is_not_an_input() {
+        // There is no code path in this crate that accepts a caller-supplied
+        // "verified" boolean/status at all; attest_capture's only inputs are
+        // bytes and the expected digest. This test documents that boundary:
+        // even a bytes payload that *spells out* an affirmative status
+        // string must still fail when it does not hash to the expected
+        // digest, proving the text has no evidentiary weight by itself.
+        let bytes = b"{\"status\":\"Verified\"}";
+        let unrelated_expected = hash_bytes(b"something else entirely");
+        let result = attest_capture(
+            bytes,
+            unrelated_expected,
+            ArtifactId::new(node(1)),
+            DigestId::new(node(2)),
+            ProvenanceId::new(node(3)),
+            UtcInstant::from_unix_seconds(0),
+        );
+        assert_eq!(result.unwrap_err(), CaptureVerificationError::DigestMismatch);
+    }
 }

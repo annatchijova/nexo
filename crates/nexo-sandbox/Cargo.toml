@@ -1,0 +1,10 @@
+[package]
+name = "nexo-sandbox"
+description = "Orchestrates sandboxed extractor jobs behind the docs/SANDBOX.md boundary. Never opens, parses, or executes artifact bytes itself."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]

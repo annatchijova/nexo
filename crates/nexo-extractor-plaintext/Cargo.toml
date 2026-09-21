@@ -1,0 +1,19 @@
+[package]
+name = "nexo-extractor-plaintext"
+description = "Sandboxed plain-text/chat-export extractor. Runs inside the SANDBOX.md worker boundary only; never linked into the API process."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nexo-extractor-plaintext"
+path = "src/main.rs"
+
+# Deliberately zero dependencies: this binary runs against hostile bytes
+# inside the sandbox boundary of docs/SANDBOX.md. Every dependency added
+# here is code that executes with the same untrusted input; the JSON output
+# it produces is small and fixed-shape enough to hand-encode instead of
+# pulling in a parser/serializer supply chain for it.
+[dependencies]

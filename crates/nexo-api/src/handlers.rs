@@ -35,6 +35,43 @@ pub async fn create_case(
     Ok(Json(CaseResponse { case_id: case.0 }))
 }
 
+#[derive(Serialize)]
+pub struct CaseNodeResponse {
+    pub node_id: i64,
+    pub kind: String,
+    pub confirmed: Option<bool>,
+}
+
+#[derive(Serialize)]
+pub struct CaseDetailResponse {
+    pub case_id: i64,
+    pub nodes: Vec<CaseNodeResponse>,
+}
+
+pub async fn read_case(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path(case_id): Path<i64>,
+) -> Result<Json<CaseDetailResponse>, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+    let nodes = repository::list_case_nodes_with_kind(&state.pool, case)
+        .await
+        .map_err(internal("could not read case"))?;
+
+    Ok(Json(CaseDetailResponse {
+        case_id,
+        nodes: nodes
+            .into_iter()
+            .map(|node| CaseNodeResponse {
+                node_id: node.node_id,
+                kind: node.kind,
+                confirmed: node.confirmed,
+            })
+            .collect(),
+    }))
+}
+
 #[derive(Deserialize)]
 pub struct AddEvidenceRequest {
     pub filename: Option<String>,

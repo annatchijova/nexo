@@ -42,6 +42,7 @@ not leaked to a non-owner.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/v1/cases` | Create a case owned by the authenticated actor. |
+| `GET` | `/v1/cases/{case_id}` | Read the authorized case graph node summary. |
 | `POST` | `/v1/cases/{case_id}/evidence` | Ingest plain-text evidence: object store -> sandboxed extraction -> artifact + observation nodes, or a bounded rejection reason. |
 | `POST` | `/v1/cases/{case_id}/assertions` | Record a user assertion (confirmed or not). |
 | `POST` | `/v1/cases/{case_id}/evaluate` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate`, render and record the result. |

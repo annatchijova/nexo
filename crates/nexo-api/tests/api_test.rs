@@ -257,6 +257,77 @@ async fn evaluation_without_confirmed_identity_is_insufficient_facts() {
 }
 
 #[tokio::test]
+async fn owner_can_read_case_graph_and_other_actor_cannot() {
+    let Some(state) = test_state("case-read").await else {
+        return;
+    };
+    let owner_token = new_owner_token(&state.pool, "case-read-owner").await;
+    let other_token = new_owner_token(&state.pool, "case-read-other").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {owner_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/assertions"))
+                .header("Authorization", format!("Bearer {owner_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"confirmed":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/v1/cases/{case_id}"))
+                .header("Authorization", format!("Bearer {owner_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let case = body_json(response).await;
+    assert_eq!(case["case_id"], case_id);
+    assert_eq!(case["nodes"].as_array().unwrap().len(), 1);
+    assert_eq!(case["nodes"][0]["kind"], "user_assertion");
+    assert_eq!(case["nodes"][0]["confirmed"], true);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/v1/cases/{case_id}"))
+                .header("Authorization", format!("Bearer {other_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn a_case_cannot_be_read_by_a_different_actor() {
     let Some(state) = test_state("ownership").await else {
         return;

@@ -32,6 +32,7 @@ pub struct AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/v1/cases", post(handlers::create_case))
+        .route("/v1/cases/{case_id}", get(handlers::read_case))
         .route(
             "/v1/cases/{case_id}/evidence",
             post(handlers::add_evidence),

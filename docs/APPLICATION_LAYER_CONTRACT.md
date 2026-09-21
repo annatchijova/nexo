@@ -19,10 +19,22 @@ responsibility of `nexo-core`, the policy layer, and the sandbox worker
 
 ## Status
 
-Proposed for the application layer (README layer 4). Schema in
-`crates/nexo-app/migrations/` implements this contract's structural rules;
-the transaction and authorization enforcement code is the next slice to
-land.
+Schema in `crates/nexo-app/migrations/` implements this contract's
+structural rules. `crates/nexo-app/src/repository.rs` implements the
+transaction contract (§ below) against that schema: actor/case creation,
+case-graph node insertion with in-transaction sequential id allocation
+under a locked case row, policy bundle/claim/route/evaluation/
+insertion. Covered by `crates/nexo-app/tests/repository_test.rs`
+(`scripts/test_repository.sh`), including a concurrency test that fires 16
+simultaneous node-insertion transactions against one case and asserts the
+resulting ids are exactly `1..=16` with no collision and no gap.
+
+Not yet implemented: authorization *enforcement* (the repository layer
+exposes `case_owner` so a caller can check it, but does not itself refuse
+a query from a non-owning actor — that belongs to the HTTP API layer,
+which sees the authenticated caller); preparation/export repository
+functions; and revoking `UPDATE`/`DELETE` from the runtime database role
+(deployment-time hardening, Step 9).
 
 ## Threat model
 

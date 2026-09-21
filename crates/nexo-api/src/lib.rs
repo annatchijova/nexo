@@ -50,5 +50,9 @@ pub fn router(state: AppState) -> Router {
             "/v1/cases/{case_id}/evaluations",
             get(handlers::list_evaluations),
         )
+        .route(
+            "/v1/cases/{case_id}/preparations",
+            post(handlers::prepare_case),
+        )
         .with_state(state)
 }

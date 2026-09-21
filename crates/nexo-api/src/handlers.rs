@@ -162,6 +162,92 @@ pub struct EvaluateResponse {
     pub result: Value,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrepareRequest {
+    pub evaluation_id: i64,
+    pub kind: String,
+}
+
+#[derive(Serialize)]
+pub struct PrepareResponse {
+    pub preparation_id: i64,
+    pub kind: &'static str,
+    pub status: &'static str,
+}
+
+pub async fn prepare_case(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path(case_id): Path<i64>,
+    Json(request): Json<PrepareRequest>,
+) -> Result<Json<PrepareResponse>, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+    if request.evaluation_id <= 0 || request.kind != "draft_request" {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "only draft_request preparation is supported",
+        ));
+    }
+
+    let (projection, resolver, _) = crate::projection::build_projection(
+        &state.pool,
+        case,
+        &state.fixture,
+    )
+    .await
+    .map_err(internal("could not build preparation projection"))?;
+    let today = Utc::now().date_naive();
+    let reference_date = nexo_core::CivilDate::try_new(
+        today.year(),
+        today.month() as u8,
+        today.day() as u8,
+    )
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "invalid reference date"))?;
+    let evaluation = nexo_core::evaluate(
+        &projection,
+        &state.fixture.bundle,
+        &state.fixture.context,
+        &state.fixture.route,
+        reference_date,
+    );
+    let action = match &evaluation {
+        nexo_core::ActionEvaluation::Actionable(action) if action.is_available() => action.clone(),
+        _ => return Err((StatusCode::CONFLICT, "evaluation is not currently preparable")),
+    };
+    let rendered = explain::render(&evaluation, &resolver, &state.fixture);
+    let bytes = serde_json::to_vec(&rendered)
+        .map_err(internal("could not render preparation material"))?;
+    let preparation_id = crate::preparation::persist_prepared_material_with_provenance(
+        &state.pool,
+        &state.store,
+        actor,
+        case,
+        nexo_app::repository::ActionEvaluationRowId(request.evaluation_id),
+        action,
+        "draft_request",
+        concat!("nexo-api/", env!("CARGO_PKG_VERSION")),
+        &bytes,
+    )
+    .await
+    .map_err(|error| match error {
+        crate::preparation::PreparationVerificationError::ReceiptNotFound
+        | crate::preparation::PreparationVerificationError::EvaluationNotSupported
+        | crate::preparation::PreparationVerificationError::ActionFingerprintMismatch
+        | crate::preparation::PreparationVerificationError::InputManifestChanged => (
+            StatusCode::CONFLICT,
+            "evaluation is stale or unsupported",
+        ),
+        _ => internal("could not persist preparation")(error),
+    })?;
+    Ok(Json(PrepareResponse {
+        preparation_id,
+        kind: "draft_request",
+        status: "prepared",
+    }))
+}
+
 pub async fn evaluate_case(
     State(state): State<AppState>,
     AuthenticatedActor(actor): AuthenticatedActor,

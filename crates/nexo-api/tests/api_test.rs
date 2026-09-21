@@ -131,7 +131,14 @@ async fn full_flow_evidence_to_actionable_citation() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        panic!(
+            "preparation endpoint returned {status}: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
     let evidence = body_json(response).await;
     assert_eq!(evidence["observation_count"], 1);
     assert!(evidence["rejection_reason"].is_null());
@@ -280,6 +287,61 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     assert!(preparation_id > 0);
 
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/preparations"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "evaluation_id": evaluation_id,
+                        "kind": "draft_request",
+                        "recipient": "https://attacker.example"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/preparations"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "evaluation_id": evaluation_id,
+                        "kind": "draft_request"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        panic!(
+            "preparation endpoint returned {status}: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+    let http_preparation = body_json(response).await;
+    let http_preparation_id = http_preparation["preparation_id"].as_i64().unwrap();
+    assert!(http_preparation_id > 0);
+    assert_eq!(http_preparation["kind"], "draft_request");
+    assert_eq!(http_preparation["status"], "prepared");
+
     sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
         .bind(evaluation_id)
         .execute(&state.pool)
@@ -293,6 +355,14 @@ async fn full_flow_evidence_to_actionable_citation() {
     .await
     .unwrap();
     assert_eq!(receipt_removed_status, "invalidated");
+    let http_receipt_removed_status: String = sqlx::query_scalar(
+        "SELECT status::text FROM preparations WHERE id = $1",
+    )
+    .bind(http_preparation_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(http_receipt_removed_status, "invalidated");
 
     let response = app
         .clone()

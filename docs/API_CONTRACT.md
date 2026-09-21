@@ -47,6 +47,20 @@ not leaked to a non-owner.
 | `POST` | `/v1/cases/{case_id}/assertions` | Record a user assertion (confirmed or not). |
 | `POST` | `/v1/cases/{case_id}/evaluate` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate`, render and record the result. |
 | `GET` | `/v1/cases/{case_id}/evaluations` | List recorded evaluations, returning the same rendered JSON stored at evaluation time. |
+| `POST` | `/v1/cases/{case_id}/preparations` | Create a deterministic local `draft_request` from a current supported evaluation; never sends it. |
+
+### `POST /v1/cases/{case_id}/preparations`
+
+Body: `{"evaluation_id": i64, "kind": "draft_request"}`. The API accepts
+no recipient, endpoint, credential, or caller-supplied output bytes. It
+rebuilds the current projection, requires the selected receipt to remain
+supported and bound to the same action and input manifest, then stores a
+deterministic JSON draft with provenance. The response is
+`{"preparation_id": i64, "kind": "draft_request", "status": "prepared"}`.
+
+An old, unsupported, or stale evaluation returns `409`; an unsupported kind
+returns `422`. This endpoint creates local material only. It has no delivery,
+filing, signature, recipient, or transport capability.
 
 ### `POST /v1/cases/{case_id}/evidence`
 

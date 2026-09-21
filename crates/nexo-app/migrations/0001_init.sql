@@ -37,7 +37,8 @@ create type acquisition_channel as enum (
     'official_api',
     'user_provided',
     'research_connector',
-    'imported_bundle'
+    'imported_bundle',
+    'generated_preparation'
 );
 
 create table provenance_records (

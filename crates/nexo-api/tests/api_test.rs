@@ -275,6 +275,20 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     assert!(preparation_id > 0);
 
+    sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
+        .bind(evaluation_id)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+    let receipt_removed_status: String = sqlx::query_scalar(
+        "SELECT status::text FROM preparations WHERE id = $1",
+    )
+    .bind(preparation_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(receipt_removed_status, "invalidated");
+
     let response = app
         .clone()
         .oneshot(

@@ -633,6 +633,22 @@ create trigger evaluation_receipt_matches_evaluation_trigger
     before insert or update on evaluation_receipts
     for each row execute function evaluation_receipt_matches_evaluation();
 
+create function invalidate_preparations_on_receipt_delete()
+returns trigger as $$
+begin
+    update preparations
+    set status = 'invalidated'::preparation_status,
+        invalidation_reason = 'evaluation receipt removed'
+    where action_evaluation_id = old.action_evaluation_id
+      and status <> 'invalidated'::preparation_status;
+    return old;
+end;
+$$ language plpgsql;
+
+create trigger invalidate_preparations_on_receipt_delete_trigger
+    after delete on evaluation_receipts
+    for each row execute function invalidate_preparations_on_receipt_delete();
+
 -- ---------------------------------------------------------------------
 -- Preparations (docs/ARCHITECTURE.md "Preparation boundary")
 -- ---------------------------------------------------------------------
@@ -697,17 +713,20 @@ begin
         where id = new.output_provenance_id;
     end if;
 
-    if kind is distinct from 'actionable'
-       or status is distinct from 'supported'::action_status
-       or not has_receipt
-       or new.action_route_id is distinct from receipt_route_id
-       or new.policy_bundle_digest_id is distinct from bundle_digest_id
-       or new.input_manifest_digest_id is distinct from receipt_input_manifest_digest_id
-       or (new.output_provenance_id is not null
-           and provenance_case_id is distinct from evaluation_case_id) then
-        raise exception
-            'preparation % lacks a supported evaluation receipt for action_evaluation %',
-            new.id, new.action_evaluation_id;
+    if tg_op = 'INSERT'
+       or new.status <> 'invalidated'::preparation_status then
+        if kind is distinct from 'actionable'
+           or status is distinct from 'supported'::action_status
+           or not has_receipt
+           or new.action_route_id is distinct from receipt_route_id
+           or new.policy_bundle_digest_id is distinct from bundle_digest_id
+           or new.input_manifest_digest_id is distinct from receipt_input_manifest_digest_id
+           or (new.output_provenance_id is not null
+               and provenance_case_id is distinct from evaluation_case_id) then
+            raise exception
+                'preparation % lacks a supported evaluation receipt for action_evaluation %',
+                new.id, new.action_evaluation_id;
+        end if;
     end if;
 
     return new;
@@ -727,7 +746,13 @@ begin
 
     if new.action_evaluation_id is distinct from old.action_evaluation_id
        or new.kind is distinct from old.kind
-       or new.prepared_at is distinct from old.prepared_at then
+       or new.prepared_at is distinct from old.prepared_at
+       or new.action_route_id is distinct from old.action_route_id
+       or new.policy_bundle_digest_id is distinct from old.policy_bundle_digest_id
+       or new.input_manifest_digest_id is distinct from old.input_manifest_digest_id
+       or new.generator_version is distinct from old.generator_version
+       or new.output_digest_id is distinct from old.output_digest_id
+       or new.output_provenance_id is distinct from old.output_provenance_id then
         raise exception 'preparation % identity is immutable', old.id;
     end if;
 

@@ -116,3 +116,25 @@ Activating a newer bundle for the same jurisdiction left preparations derived
 from the prior bundle in `prepared`. An activation trigger now invalidates
 those materials while preserving their audit record; the repository probe
 covers the policy replacement.
+
+### RT-024-10 — Receipt removal could leave a preparation current
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+Deleting the receipt that justified a preparation removed the evidence while
+leaving the material apparently current. The database now invalidates every
+non-invalidated preparation tied to the deleted evaluation, with an explicit
+reason. The preparation integrity trigger permits this fail-closed transition
+without permitting inserts or ordinary updates that lack a supported receipt.
+The API integration test covers receipt deletion and verifies that a later
+case mutation does not revive the material.
+
+### RT-024-11 — Preparation bindings and output identity could be rewritten
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The lifecycle guard previously froze only the evaluation, kind, and timestamp.
+A direct writer could therefore rewrite route, policy/input bindings, generator
+version, or output references after preparation. Those fields are now immutable
+for the lifetime of the row, including after invalidation, preserving the
+identity of the material that was actually produced.

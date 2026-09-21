@@ -150,6 +150,17 @@ manifest digest after a preparation had consumed the receipt. Receipts are now
 immutable on update; explicit deletion remains the only revocation path and
 invalidates dependent preparations.
 
+### RT-024-15 — Process restart duplicated the active policy bundle
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The startup seed path inserted and activated a new copy of the same AR policy
+bundle on every process start. Because policy activation intentionally
+invalidates preparations for that jurisdiction, a restart could make unchanged
+materials stale. Startup seeding now serializes on an advisory transaction lock
+and returns the existing activated bundle/route for the exact fixture identity;
+the API test invokes seeding twice and asserts identical durable IDs.
+
 ### RT-024-13 — Receipted evaluation result could be rewritten
 
 **Level:** CONFIRMED BY INDUCTION → REMEDIATED

@@ -58,6 +58,11 @@ async fn test_state(label: &str) -> Option<AppState> {
     let seeded = nexo_api::seed::seed_ar_bundle(&pool, &fixture, owner)
         .await
         .expect("seed AR bundle");
+    let reseeded = nexo_api::seed::seed_ar_bundle(&pool, &fixture, owner)
+        .await
+        .expect("reseed AR bundle idempotently");
+    assert_eq!(reseeded.policy_bundle, seeded.policy_bundle);
+    assert_eq!(reseeded.action_route, seeded.action_route);
 
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let store = FilesystemObjectStore::open(temp_dir.path()).expect("open object store");

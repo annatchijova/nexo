@@ -78,3 +78,23 @@ metadata. It did not require the route, policy digest, input-manifest digest,
 or generator version that the preparation contract requires. Those fields are
 now mandatory, and the trigger compares route, bundle digest, and input
 manifest against the receipt before insertion or update.
+
+### RT-024-06 — Prepared rows could omit output evidence
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The preparation table allowed a `prepared` row with no output digest or
+provenance. The output artifact contract now makes both references mandatory;
+the object store remains responsible for proving that the bytes match the
+digest before the row is created.
+
+### RT-024-07 — Output digest could bypass content-addressed storage
+
+**Level:** RESOLVED FOR APPLICATION PATH / RESIDUAL AT RAW REPOSITORY API
+
+The low-level repository function accepts a digest row because it is a
+storage-neutral persistence layer. The application helper now writes bytes
+through `FilesystemObjectStore::put`, derives the SHA-256 digest internally,
+and only then inserts the preparation in a transaction. No HTTP preparation
+endpoint exposes the lower-level function; future adapters must use the
+application helper rather than caller-supplied digest rows.

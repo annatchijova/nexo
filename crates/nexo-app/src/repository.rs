@@ -735,3 +735,36 @@ pub async fn evaluation_receipt_exists(
     .await?;
     Ok(row.get("exists"))
 }
+
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_preparation(
+    tx: &mut Tx<'_>,
+    evaluation: ActionEvaluationRowId,
+    route: ActionRouteRowId,
+    policy_bundle_digest: DigestRowId,
+    input_manifest_digest: DigestRowId,
+    generator_version: &str,
+    kind: &str,
+    output_digest: DigestRowId,
+    output_provenance: ProvenanceRowId,
+) -> Result<i64, RepoError> {
+    let row = sqlx::query(
+        "INSERT INTO preparations
+            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+             input_manifest_digest_id, generator_version, kind,
+             output_digest_id, output_provenance_id)
+         VALUES ($1, $2, $3, $4, $5, $6::preparation_kind, $7, $8)
+         RETURNING id",
+    )
+    .bind(evaluation.0)
+    .bind(route.0)
+    .bind(policy_bundle_digest.0)
+    .bind(input_manifest_digest.0)
+    .bind(generator_version)
+    .bind(kind)
+    .bind(output_digest.0)
+    .bind(output_provenance.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(row.try_get("id")?)
+}

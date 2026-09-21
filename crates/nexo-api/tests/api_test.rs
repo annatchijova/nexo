@@ -247,6 +247,34 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     assert!(snapshot.action().action().is_available());
 
+    let mut provenance_tx = state.pool.begin().await.unwrap();
+    let preparation_provenance = repository::insert_provenance(
+        &mut provenance_tx,
+        repository::CaseRowId(case_id),
+        "research_connector",
+        Some(owner),
+        chrono::Utc::now(),
+        json!({"generated": true}),
+    )
+    .await
+    .unwrap();
+    provenance_tx.commit().await.unwrap();
+    let preparation_id = nexo_api::preparation::persist_prepared_material(
+        &state.pool,
+        &state.store,
+        owner,
+        repository::CaseRowId(case_id),
+        repository::ActionEvaluationRowId(evaluation_id),
+        action.clone(),
+        "draft_request",
+        "test-generator-1",
+        preparation_provenance,
+        b"deterministic local draft",
+    )
+    .await
+    .unwrap();
+    assert!(preparation_id > 0);
+
     let foreign = repository::create_actor(&state.pool, "foreign-preparation-owner")
         .await
         .unwrap();

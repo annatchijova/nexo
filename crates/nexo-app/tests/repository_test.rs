@@ -523,13 +523,16 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let preparation_without_receipt = sqlx::query(
         "INSERT INTO preparations
             (action_evaluation_id, action_route_id, policy_bundle_digest_id,
-             input_manifest_digest_id, generator_version, kind)
-         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind)",
+             input_manifest_digest_id, generator_version, kind,
+             output_digest_id, output_provenance_id)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind, $5, $6)",
     )
     .bind(evaluation.0)
     .bind(route.0)
     .bind(digest.0)
     .bind(input_manifest_digest.0)
+    .bind(result_digest.0)
+    .bind(provenance.0)
     .execute(&mut *preparation_without_receipt_tx)
     .await;
     assert!(
@@ -539,18 +542,17 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     preparation_without_receipt_tx.rollback().await.unwrap();
 
     let mut preparation_lifecycle_tx = pool.begin().await.unwrap();
-    let preparation_id: i64 = sqlx::query_scalar(
-        "INSERT INTO preparations
-            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
-             input_manifest_digest_id, generator_version, kind)
-         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind)
-         RETURNING id",
+    let preparation_id = repository::insert_preparation(
+        &mut preparation_lifecycle_tx,
+        evaluation,
+        route,
+        digest,
+        input_manifest_digest,
+        "test",
+        "draft_request",
+        result_digest,
+        provenance,
     )
-    .bind(evaluation.0)
-    .bind(route.0)
-    .bind(digest.0)
-    .bind(input_manifest_digest.0)
-    .fetch_one(&mut *preparation_lifecycle_tx)
     .await
     .unwrap();
     sqlx::query(
@@ -599,13 +601,15 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let preparation_foreign_provenance = sqlx::query(
         "INSERT INTO preparations
             (action_evaluation_id, action_route_id, policy_bundle_digest_id,
-             input_manifest_digest_id, generator_version, kind, output_provenance_id)
-         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind, $5)",
+             input_manifest_digest_id, generator_version, kind,
+             output_digest_id, output_provenance_id)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind, $5, $6)",
     )
     .bind(evaluation.0)
     .bind(route.0)
     .bind(digest.0)
     .bind(input_manifest_digest.0)
+    .bind(result_digest.0)
     .bind(foreign_provenance.0)
     .execute(&mut *preparation_foreign_provenance_tx)
     .await;

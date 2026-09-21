@@ -655,8 +655,8 @@ create table preparations (
     kind                       preparation_kind not null,
     status                      preparation_status not null default 'prepared',
     prepared_at                 timestamptz not null default now(),
-    output_digest_id             bigint references digests (id),
-    output_provenance_id          bigint references provenance_records (id),
+    output_digest_id             bigint not null references digests (id),
+    output_provenance_id          bigint not null references provenance_records (id),
     invalidation_reason            text
 );
 

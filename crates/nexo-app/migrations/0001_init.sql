@@ -633,6 +633,30 @@ create trigger evaluation_receipt_matches_evaluation_trigger
     before insert or update on evaluation_receipts
     for each row execute function evaluation_receipt_matches_evaluation();
 
+create function evaluation_receipts_are_immutable()
+returns trigger as $$
+begin
+    if new.action_evaluation_id is distinct from old.action_evaluation_id
+       or new.case_id is distinct from old.case_id
+       or new.action_route_id is distinct from old.action_route_id
+       or new.policy_bundle_id is distinct from old.policy_bundle_id
+       or new.input_manifest_digest_id is distinct from old.input_manifest_digest_id
+       or new.result_digest_id is distinct from old.result_digest_id
+       or new.action_digest_id is distinct from old.action_digest_id
+       or new.manifest_schema_version is distinct from old.manifest_schema_version
+       or new.result_schema_version is distinct from old.result_schema_version
+       or new.evaluator_version is distinct from old.evaluator_version
+       or new.recorded_at is distinct from old.recorded_at then
+        raise exception 'evaluation receipt % is immutable', old.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger evaluation_receipts_are_immutable_trigger
+    before update on evaluation_receipts
+    for each row execute function evaluation_receipts_are_immutable();
+
 create function invalidate_preparations_on_receipt_delete()
 returns trigger as $$
 begin

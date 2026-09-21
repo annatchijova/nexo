@@ -664,6 +664,20 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
 
     assert!(receipt.0 > 0);
 
+    let mut receipt_update_tx = pool.begin().await.unwrap();
+    let receipt_update = sqlx::query(
+        "UPDATE evaluation_receipts SET action_digest_id = $1 WHERE id = $2",
+    )
+    .bind(result_digest.0)
+    .bind(receipt.0)
+    .execute(&mut *receipt_update_tx)
+    .await;
+    assert!(
+        receipt_update.is_err(),
+        "receipt binding evidence must be immutable"
+    );
+    receipt_update_tx.rollback().await.unwrap();
+
     let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, evaluation.0);

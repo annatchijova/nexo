@@ -138,3 +138,14 @@ A direct writer could therefore rewrite route, policy/input bindings, generator
 version, or output references after preparation. Those fields are now immutable
 for the lifetime of the row, including after invalidation, preserving the
 identity of the material that was actually produced.
+
+### RT-024-12 — Receipt binding fields could be rewritten after issuance
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The receipt trigger checked that a new or updated receipt matched the
+evaluation's case, route, policy, and result status, but it did not freeze the
+receipt's digest bindings. A direct writer could replace the action or input
+manifest digest after a preparation had consumed the receipt. Receipts are now
+immutable on update; explicit deletion remains the only revocation path and
+invalidates dependent preparations.

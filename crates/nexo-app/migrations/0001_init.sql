@@ -657,6 +657,35 @@ create trigger evaluation_receipts_are_immutable_trigger
     before update on evaluation_receipts
     for each row execute function evaluation_receipts_are_immutable();
 
+create function receipted_action_evaluations_are_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from evaluation_receipts receipt
+        where receipt.action_evaluation_id = old.id
+    ) and (
+        new.case_id is distinct from old.case_id
+        or new.route_id is distinct from old.route_id
+        or new.policy_bundle_id is distinct from old.policy_bundle_id
+        or new.evaluated_at is distinct from old.evaluated_at
+        or new.evaluator_version is distinct from old.evaluator_version
+        or new.result_kind is distinct from old.result_kind
+        or new.action_status is distinct from old.action_status
+        or new.non_actionable_variant is distinct from old.non_actionable_variant
+        or new.result_schema_version is distinct from old.result_schema_version
+        or new.result_payload is distinct from old.result_payload
+    ) then
+        raise exception 'action evaluation % is immutable after receipt issuance', old.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger receipted_action_evaluations_are_immutable_trigger
+    before update on action_evaluations
+    for each row execute function receipted_action_evaluations_are_immutable();
+
 create function invalidate_preparations_on_receipt_delete()
 returns trigger as $$
 begin

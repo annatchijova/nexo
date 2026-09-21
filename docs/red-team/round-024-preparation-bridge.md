@@ -149,3 +149,13 @@ receipt's digest bindings. A direct writer could replace the action or input
 manifest digest after a preparation had consumed the receipt. Receipts are now
 immutable on update; explicit deletion remains the only revocation path and
 invalidates dependent preparations.
+
+### RT-024-13 — Receipted evaluation result could be rewritten
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The evaluation row remained mutable after its receipt had been issued. A
+writer could replace the sealed result payload or status while the receipt and
+dependent preparation continued to refer to the old decision. Evaluations are
+now immutable once a receipt exists; deletion of the receipt remains the
+explicit revocation path and invalidates dependent preparations.

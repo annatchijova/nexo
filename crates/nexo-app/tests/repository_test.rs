@@ -678,6 +678,21 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     receipt_update_tx.rollback().await.unwrap();
 
+    let mut evaluation_update_tx = pool.begin().await.unwrap();
+    let evaluation_update = sqlx::query(
+        "UPDATE action_evaluations
+         SET result_payload = '{\"tampered\":true}'::jsonb
+         WHERE id = $1",
+    )
+    .bind(evaluation.0)
+    .execute(&mut *evaluation_update_tx)
+    .await;
+    assert!(
+        evaluation_update.is_err(),
+        "a receipted evaluation must be immutable"
+    );
+    evaluation_update_tx.rollback().await.unwrap();
+
     let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, evaluation.0);

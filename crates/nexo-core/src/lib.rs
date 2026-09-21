@@ -114,6 +114,10 @@ impl NodeId {
     pub const fn new(value: NonZeroU64) -> Self {
         Self(value)
     }
+
+    pub const fn as_u64(self) -> u64 {
+        self.0.get()
+    }
 }
 
 /// A node kind that can establish factual support for an action.
@@ -135,6 +139,10 @@ pub struct NormativeClaimId(NodeId);
 impl NormativeClaimId {
     pub const fn new(value: NodeId) -> Self {
         Self(value)
+    }
+
+    pub const fn node_id(self) -> NodeId {
+        self.0
     }
 }
 
@@ -348,6 +356,10 @@ pub struct RequirementId(NodeId);
 impl RequirementId {
     pub const fn new(value: NodeId) -> Self {
         Self(value)
+    }
+
+    pub const fn node_id(self) -> NodeId {
+        self.0
     }
 }
 

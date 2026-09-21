@@ -10,9 +10,9 @@
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use chrono::{Datelike, Utc};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use std::num::NonZeroU64;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -212,17 +212,30 @@ async fn full_flow_evidence_to_actionable_citation() {
         .await
         .unwrap()
         .unwrap();
-    let action = nexo_core::ActionOption::try_new(
-        nexo_core::ActionStatus::Supported,
-        vec![nexo_core::FactualSupport::Artifact(nexo_core::NodeId::new(
-            NonZeroU64::new(1).unwrap(),
-        ))],
-        vec![nexo_core::NormativeClaimId::new(nexo_core::NodeId::new(
-            NonZeroU64::new(1).unwrap(),
-        ))],
-        Vec::new(),
+    let (projection, _, _) = nexo_api::projection::build_projection(
+        &state.pool,
+        repository::CaseRowId(case_id),
+        &state.fixture,
+    )
+    .await
+    .unwrap();
+    let today = Utc::now().date_naive();
+    let reference_date = nexo_core::CivilDate::try_new(
+        today.year(),
+        today.month() as u8,
+        today.day() as u8,
     )
     .unwrap();
+    let action = match nexo_core::evaluate(
+        &projection,
+        &state.fixture.bundle,
+        &state.fixture.context,
+        &state.fixture.route,
+        reference_date,
+    ) {
+        nexo_core::ActionEvaluation::Actionable(action) => action,
+        other => panic!("expected the same supported action, got {other:?}"),
+    };
     let snapshot = nexo_api::preparation::verify_receipt_and_mint_snapshot(
         &state.pool,
         owner,

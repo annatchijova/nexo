@@ -3,9 +3,11 @@
 //! preparation endpoint yet; it proves the authority boundary first.
 
 use std::num::NonZeroU64;
+use std::collections::BTreeMap;
 
 use nexo_app::repository::{self, ActionEvaluationRowId, CaseRowId, Pool};
 use nexo_core::{ActionOption, NodeId, VerifiedPreparationSnapshot};
+use nexo_integrity::{seal, CanonicalValue};
 
 #[derive(Debug)]
 pub enum PreparationVerificationError {
@@ -14,6 +16,66 @@ pub enum PreparationVerificationError {
     ReceiptNotFound,
     EvaluationNotSupported,
     InvalidDurableIdentity,
+    ActionFingerprintMismatch,
+}
+
+pub fn action_fingerprint(action: &ActionOption) -> String {
+    let factual_support = action
+        .factual_support()
+        .iter()
+        .map(|support| match support {
+            nexo_core::FactualSupport::Artifact(id) => {
+                let mut fields = BTreeMap::new();
+                fields.insert("kind".into(), CanonicalValue::Text("artifact".into()));
+                fields.insert("node_id".into(), CanonicalValue::U64(id.as_u64()));
+                CanonicalValue::Map(fields)
+            }
+            nexo_core::FactualSupport::Observation(id) => {
+                let mut fields = BTreeMap::new();
+                fields.insert("kind".into(), CanonicalValue::Text("observation".into()));
+                fields.insert("node_id".into(), CanonicalValue::U64(id.as_u64()));
+                CanonicalValue::Map(fields)
+            }
+            nexo_core::FactualSupport::UserAssertion(id) => {
+                let mut fields = BTreeMap::new();
+                fields.insert("kind".into(), CanonicalValue::Text("user_assertion".into()));
+                fields.insert("node_id".into(), CanonicalValue::U64(id.as_u64()));
+                CanonicalValue::Map(fields)
+            }
+            nexo_core::FactualSupport::DerivedFact(id) => {
+                let mut fields = BTreeMap::new();
+                fields.insert("kind".into(), CanonicalValue::Text("derived_fact".into()));
+                fields.insert("node_id".into(), CanonicalValue::U64(id.as_u64()));
+                CanonicalValue::Map(fields)
+            }
+        })
+        .collect();
+    let legal_support = action
+        .legal_support()
+        .iter()
+        .map(|id| CanonicalValue::U64(id.node_id().as_u64()))
+        .collect();
+    let unmet_requirements = action
+        .unmet_requirements()
+        .iter()
+        .map(|id| CanonicalValue::U64(id.node_id().as_u64()))
+        .collect();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "status".into(),
+        CanonicalValue::Text(match action.status() {
+            nexo_core::ActionStatus::Supported => "supported",
+            nexo_core::ActionStatus::ConditionallySupported => "conditionally_supported",
+        }
+        .into()),
+    );
+    fields.insert("factual_support".into(), CanonicalValue::List(factual_support));
+    fields.insert("legal_support".into(), CanonicalValue::List(legal_support));
+    fields.insert(
+        "unmet_requirements".into(),
+        CanonicalValue::List(unmet_requirements),
+    );
+    seal(&CanonicalValue::Map(fields)).to_string()
 }
 
 impl From<repository::RepoError> for PreparationVerificationError {
@@ -57,6 +119,9 @@ pub async fn verify_receipt_and_mint_snapshot(
         || binding.action_status.as_deref() != Some("supported")
     {
         return Err(PreparationVerificationError::EvaluationNotSupported);
+    }
+    if action_fingerprint(&action) != binding.action_digest_hex {
+        return Err(PreparationVerificationError::ActionFingerprintMismatch);
     }
 
     let action_identity = node_id(binding.route_id)?;

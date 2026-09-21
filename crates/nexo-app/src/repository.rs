@@ -596,6 +596,7 @@ pub async fn insert_evaluation_receipt(
     bundle: PolicyBundleRowId,
     input_manifest_digest: DigestRowId,
     result_digest: DigestRowId,
+    action_digest: DigestRowId,
     manifest_schema_version: i16,
     result_schema_version: i16,
     evaluator_version: &str,
@@ -603,9 +604,9 @@ pub async fn insert_evaluation_receipt(
     let row = sqlx::query(
         "INSERT INTO evaluation_receipts
             (action_evaluation_id, case_id, action_route_id, policy_bundle_id,
-             input_manifest_digest_id, result_digest_id, manifest_schema_version,
-             result_schema_version, evaluator_version)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             input_manifest_digest_id, result_digest_id, action_digest_id,
+             manifest_schema_version, result_schema_version, evaluator_version)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id",
     )
     .bind(evaluation.0)
@@ -614,6 +615,7 @@ pub async fn insert_evaluation_receipt(
     .bind(bundle.0)
     .bind(input_manifest_digest.0)
     .bind(result_digest.0)
+    .bind(action_digest.0)
     .bind(manifest_schema_version)
     .bind(result_schema_version)
     .bind(evaluator_version)
@@ -642,6 +644,8 @@ pub struct EvaluationReceiptBinding {
     pub policy_bundle_digest_id: i64,
     pub input_manifest_digest_id: i64,
     pub result_digest_id: i64,
+    pub action_digest_id: i64,
+    pub action_digest_hex: String,
     pub result_kind: String,
     pub action_status: Option<String>,
 }
@@ -659,12 +663,16 @@ pub async fn find_evaluation_receipt_binding(
                 bundle.digest_id AS policy_bundle_digest_id,
                 receipt.input_manifest_digest_id,
                 receipt.result_digest_id,
+                receipt.action_digest_id,
+                action_digest.hex AS action_digest_hex,
                 e.result_kind::text, e.action_status::text
          FROM action_evaluations e
          JOIN evaluation_receipts receipt
            ON receipt.action_evaluation_id = e.id
          JOIN policy_bundles bundle
            ON bundle.id = e.policy_bundle_id
+         JOIN digests action_digest
+           ON action_digest.id = receipt.action_digest_id
          WHERE e.id = $1
            AND e.case_id = $2",
     )
@@ -679,6 +687,8 @@ pub async fn find_evaluation_receipt_binding(
         policy_bundle_digest_id: row.get("policy_bundle_digest_id"),
         input_manifest_digest_id: row.get("input_manifest_digest_id"),
         result_digest_id: row.get("result_digest_id"),
+        action_digest_id: row.get("action_digest_id"),
+        action_digest_hex: row.get("action_digest_hex"),
         result_kind: row.get("result_kind"),
         action_status: row.get("action_status"),
     }))

@@ -594,6 +594,7 @@ create table evaluation_receipts (
     policy_bundle_id          bigint not null references policy_bundles (id),
     input_manifest_digest_id  bigint not null references digests (id),
     result_digest_id          bigint not null references digests (id),
+    action_digest_id          bigint not null references digests (id),
     manifest_schema_version   smallint not null check (manifest_schema_version >= 0),
     result_schema_version     smallint not null check (result_schema_version >= 0),
     evaluator_version         text not null check (evaluator_version <> ''),
@@ -665,14 +666,23 @@ create function preparations_require_actionable_evaluation()
 returns trigger as $$
 declare
     kind evaluation_result_kind;
+    status action_status;
+    has_receipt boolean;
 begin
-    select result_kind into kind
+    select result_kind, action_status into kind, status
     from action_evaluations
     where id = new.action_evaluation_id;
+    select exists(
+        select 1
+        from evaluation_receipts
+        where action_evaluation_id = new.action_evaluation_id
+    ) into has_receipt;
 
-    if kind is distinct from 'actionable' then
+    if kind is distinct from 'actionable'
+       or status is distinct from 'supported'::action_status
+       or not has_receipt then
         raise exception
-            'preparation % references non-actionable action_evaluation %',
+            'preparation % lacks a supported evaluation receipt for action_evaluation %',
             new.id, new.action_evaluation_id;
     end if;
 

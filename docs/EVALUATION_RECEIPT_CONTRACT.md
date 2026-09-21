@@ -18,7 +18,8 @@ Each receipt must bind, without relying on co-presence in a struct:
 | Evaluation used this policy | Immutable policy-bundle id and its captured bundle digest, recorded in the same evaluation transaction. |
 | Evaluation derived from these inputs | Canonical, ordered input-manifest digest covering the case-graph references visible to the projection, plus the graph/schema version. |
 
-The receipt must also carry evaluator version and result schema version. Missing
+The receipt also carries a canonical action fingerprint, evaluator version and
+result schema version. Missing
 or mismatched evidence fails closed; no receipt is emitted for a
 non-actionable or conditionally supported result.
 

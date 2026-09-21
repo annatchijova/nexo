@@ -207,6 +207,12 @@ pub async fn evaluate_case(
     let rendered = explain::render(&result, &resolver, &state.fixture);
     let result_digest = result_digest(&rendered);
     let input_manifest_digest = projection::input_manifest_digest(&manifest);
+    let action_digest = match &result {
+        nexo_core::ActionEvaluation::Actionable(action) => {
+            Some(crate::preparation::action_fingerprint(action))
+        }
+        nexo_core::ActionEvaluation::NonActionable(_) => None,
+    };
 
     let (result_kind, action_status, non_actionable_variant) = classify(&result);
 
@@ -230,6 +236,7 @@ pub async fn evaluate_case(
     .await
     .map_err(internal("could not record evaluation"))?;
     if result_kind == "actionable" && action_status == Some("supported") {
+        let action_digest = action_digest.expect("actionable results have an action digest");
         let input_manifest_digest = repository::upsert_digest(
             &mut tx,
             "sha256",
@@ -240,6 +247,9 @@ pub async fn evaluate_case(
         let result_digest = repository::upsert_digest(&mut tx, "sha256", &result_digest)
             .await
             .map_err(internal("could not record result digest"))?;
+        let action_digest = repository::upsert_digest(&mut tx, "sha256", &action_digest)
+            .await
+            .map_err(internal("could not record action digest"))?;
         repository::insert_evaluation_receipt(
             &mut tx,
             evaluation,
@@ -248,6 +258,7 @@ pub async fn evaluate_case(
             state.seeded.policy_bundle,
             input_manifest_digest,
             result_digest,
+            action_digest,
             projection::INPUT_MANIFEST_SCHEMA_VERSION,
             1,
             env!("CARGO_PKG_VERSION"),

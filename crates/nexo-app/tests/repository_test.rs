@@ -357,6 +357,9 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let result_digest = repository::upsert_digest(&mut tx, "sha256", &"22".repeat(32))
         .await
         .unwrap();
+    let action_digest = repository::upsert_digest(&mut tx, "sha256", &"33".repeat(32))
+        .await
+        .unwrap();
     let receipt = repository::insert_evaluation_receipt(
         &mut tx,
         evaluation,
@@ -365,6 +368,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         bundle,
         input_manifest_digest,
         result_digest,
+        action_digest,
         1,
         1,
         "0.1.0",
@@ -510,6 +514,25 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     activated_source_update_tx.rollback().await.unwrap();
 
+    let mut preparation_without_receipt_tx = pool.begin().await.unwrap();
+    sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
+        .bind(evaluation.0)
+        .execute(&mut *preparation_without_receipt_tx)
+        .await
+        .unwrap();
+    let preparation_without_receipt = sqlx::query(
+        "INSERT INTO preparations (action_evaluation_id, kind)
+         VALUES ($1, 'draft_request'::preparation_kind)",
+    )
+    .bind(evaluation.0)
+    .execute(&mut *preparation_without_receipt_tx)
+    .await;
+    assert!(
+        preparation_without_receipt.is_err(),
+        "preparation requires a verified evaluation receipt"
+    );
+    preparation_without_receipt_tx.rollback().await.unwrap();
+
     assert!(receipt.0 > 0);
 
     let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();
@@ -529,6 +552,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         bundle,
         input_manifest_digest,
         result_digest,
+        action_digest,
         1,
         1,
         "0.1.0",
@@ -561,6 +585,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         bundle,
         input_manifest_digest,
         result_digest,
+        action_digest,
         1,
         1,
         "0.1.0",

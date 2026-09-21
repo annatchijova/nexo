@@ -23,26 +23,31 @@ turn request-supplied identifiers into a preparation capability.
 
 ## Residual
 
-### RT-024-01 — Action payload substitution remains an internal composition obligation
+### RT-024-01 — Action payload substitution was an internal composition gap
 
-**Level:** CODE FACT / ACCEPTED RESIDUAL
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
 
 The bridge receives an `ActionOption` from the application composition and
-checks only that it is available. The durable receipt stores the rendered
-evaluation digest, not a normalized action-support vector, so the bridge does
-not independently recompute that vector and compare it with the supplied
-action. A future public preparation handler must pass the exact action returned
-by the same evaluation call; it must never deserialize or accept an action from
-the request. No preparation endpoint is exposed while this remains an
-application-owned obligation.
+now compares its canonical action fingerprint with the digest stored in the
+receipt. A mismatched available action is rejected before minting.
 
-This is not currently an HTTP exploit because the bridge is not routed and the
-API request cannot supply an `ActionOption`. Before enabling preparation, add a
-canonical action identity/payload check or make the evaluator-to-bridge handoff
-an unforgeable in-process token.
+The integration test obtains the action from the same evaluator/projection path
+as the HTTP evaluation and verifies owner success plus foreign-owner failure.
+The fingerprint is not accepted from the request; the API computes it during
+evaluation and persists it in the receipt transaction.
 
 ## Exit decision
 
 The bridge is safe to keep internal and unexposed for the current evaluation
-slice. Preparation/export endpoints remain deferred pending the residual's
-resolution and deterministic output generation.
+slice. Preparation/export endpoints remain deferred pending deterministic
+output generation and lifecycle persistence.
+
+### RT-024-02 — Preparation rows could bypass receipt evidence
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The database preparation trigger originally checked only that the referenced
+evaluation was `actionable`. A direct insert could therefore create a
+preparation after deleting or never creating its evaluation receipt. The
+adversarial repository test reproduced this path. The trigger now requires an
+existing receipt and `SUPPORTED` status, and rolls back the probe.

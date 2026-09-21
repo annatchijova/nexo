@@ -694,6 +694,40 @@ create trigger preparations_require_actionable_evaluation_trigger
     before insert or update on preparations
     for each row execute function preparations_require_actionable_evaluation();
 
+create function preparations_preserve_lifecycle()
+returns trigger as $$
+begin
+    if tg_op = 'DELETE' then
+        raise exception 'preparation % is append-only', old.id;
+    end if;
+
+    if new.action_evaluation_id is distinct from old.action_evaluation_id
+       or new.kind is distinct from old.kind
+       or new.prepared_at is distinct from old.prepared_at then
+        raise exception 'preparation % identity is immutable', old.id;
+    end if;
+
+    if old.status = 'exported'::preparation_status
+       and new.status = 'prepared'::preparation_status then
+        raise exception 'exported preparation % cannot return to prepared', old.id;
+    end if;
+    if old.status = 'invalidated'::preparation_status
+       and new.status <> 'invalidated'::preparation_status then
+        raise exception 'invalidated preparation % cannot be revived', old.id;
+    end if;
+    if new.status = 'invalidated'::preparation_status
+       and nullif(trim(new.invalidation_reason), '') is null then
+        raise exception 'invalidated preparation % requires a reason', new.id;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger preparations_preserve_lifecycle_trigger
+    before update or delete on preparations
+    for each row execute function preparations_preserve_lifecycle();
+
 -- ---------------------------------------------------------------------
 -- Append-only audit log. The hash-chain itself (entry_hash covering the
 -- previous entry_hash) is Step 2 / nexo-integrity's contract; this table

@@ -51,3 +51,12 @@ evaluation was `actionable`. A direct insert could therefore create a
 preparation after deleting or never creating its evaluation receipt. The
 adversarial repository test reproduced this path. The trigger now requires an
 existing receipt and `SUPPORTED` status, and rolls back the probe.
+
+### RT-024-03 — Preparation lifecycle could be rewound or deleted
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+Direct SQL could move an exported preparation back to `prepared` and delete
+the row entirely. The lifecycle trigger now preserves identity fields, allows
+only forward transitions or invalidation with a reason, and rejects deletes.
+The repository probe covers both rewind and deletion attempts.

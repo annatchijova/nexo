@@ -533,6 +533,45 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     preparation_without_receipt_tx.rollback().await.unwrap();
 
+    let mut preparation_lifecycle_tx = pool.begin().await.unwrap();
+    let preparation_id: i64 = sqlx::query_scalar(
+        "INSERT INTO preparations (action_evaluation_id, kind)
+         VALUES ($1, 'draft_request'::preparation_kind)
+         RETURNING id",
+    )
+    .bind(evaluation.0)
+    .fetch_one(&mut *preparation_lifecycle_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE preparations SET status = 'exported'::preparation_status
+         WHERE id = $1",
+    )
+    .bind(preparation_id)
+    .execute(&mut *preparation_lifecycle_tx)
+    .await
+    .unwrap();
+    let backwards_transition = sqlx::query(
+        "UPDATE preparations SET status = 'prepared'::preparation_status
+         WHERE id = $1",
+    )
+    .bind(preparation_id)
+    .execute(&mut *preparation_lifecycle_tx)
+    .await;
+    assert!(
+        backwards_transition.is_err(),
+        "an exported preparation must not return to prepared"
+    );
+    let preparation_delete = sqlx::query("DELETE FROM preparations WHERE id = $1")
+        .bind(preparation_id)
+        .execute(&mut *preparation_lifecycle_tx)
+        .await;
+    assert!(
+        preparation_delete.is_err(),
+        "preparation evidence must not be deleted"
+    );
+    preparation_lifecycle_tx.rollback().await.unwrap();
+
     assert!(receipt.0 > 0);
 
     let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();

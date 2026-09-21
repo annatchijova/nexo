@@ -98,3 +98,12 @@ through `FilesystemObjectStore::put`, derives the SHA-256 digest internally,
 and only then inserts the preparation in a transaction. No HTTP preparation
 endpoint exposes the lower-level function; future adapters must use the
 application helper rather than caller-supplied digest rows.
+
+### RT-024-08 — Preparations remained current after case inputs changed
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+After a preparation was persisted, inserting another case-graph node left its
+status as `prepared`. The database now invalidates all preparations derived
+from that case while preserving their output and invalidation reason. The API
+integration test covers the transition.

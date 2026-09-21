@@ -752,6 +752,26 @@ create trigger preparations_preserve_lifecycle_trigger
     before update or delete on preparations
     for each row execute function preparations_preserve_lifecycle();
 
+-- A new case-graph input changes the manifest from which a preparation was
+-- derived. Preserve the material for audit, but stop presenting it as current.
+create function invalidate_preparations_on_case_node_insert()
+returns trigger as $$
+begin
+    update preparations preparation
+    set status = 'invalidated'::preparation_status,
+        invalidation_reason = 'case inputs changed'
+    from action_evaluations evaluation
+    where preparation.action_evaluation_id = evaluation.id
+      and evaluation.case_id = new.case_id
+      and preparation.status <> 'invalidated'::preparation_status;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger invalidate_preparations_on_case_node_insert_trigger
+    after insert on case_nodes
+    for each row execute function invalidate_preparations_on_case_node_insert();
+
 -- ---------------------------------------------------------------------
 -- Append-only audit log. The hash-chain itself (entry_hash covering the
 -- previous entry_hash) is Step 2 / nexo-integrity's contract; this table

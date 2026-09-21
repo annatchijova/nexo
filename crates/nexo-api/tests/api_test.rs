@@ -275,6 +275,29 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     assert!(preparation_id > 0);
 
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/assertions"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"confirmed":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let preparation_status: String = sqlx::query_scalar(
+        "SELECT status::text FROM preparations WHERE id = $1",
+    )
+    .bind(preparation_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(preparation_status, "invalidated");
+
     let foreign = repository::create_actor(&state.pool, "foreign-preparation-owner")
         .await
         .unwrap();

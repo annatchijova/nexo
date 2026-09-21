@@ -45,11 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Seeds the AR bundle on every startup for now (each call inserts a new
-/// bundle row, per the "activation is append-only" rule) — acceptable for
-/// this round's single-process personal deployment; a real multi-instance
-/// deployment would need an idempotent "seed if not already active"
-/// check, noted in docs/API_CONTRACT.md as future work.
+/// Ensures the exact AR fixture identity is activated at startup. The seed
+/// helper is idempotent and serializes concurrent process starts, so a restart
+/// does not create a new policy version or invalidate unchanged preparations.
 async fn ensure_ar_bundle_seeded(
     pool: &repository::Pool,
     fixture: &nexo_policy_ar::Fixture,

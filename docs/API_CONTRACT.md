@@ -133,12 +133,11 @@ equality afterward — never by reading a value out of the id.
   only compares these ids for identity in the paths this bundle
   exercises today (not their content), so reuse is safe for now; a real
   per-case jurisdiction determination is future work.
-- **Bundle re-seeded on every process start.** `main.rs` calls
-  `seed_ar_bundle` unconditionally at startup, and
-  `policy_bundle_activations` is append-only by design — so every restart
-  creates a new bundle row and activation. Fine for one long-running
-  process; a multi-instance deployment needs an idempotent "seed if not
-  already active" check.
+- **Bundle seed is idempotent.** `main.rs` calls `seed_ar_bundle`
+  unconditionally at startup, but the helper serializes concurrent starts and
+  returns the existing activated row for the exact fixture identity. A restart
+  therefore does not create a new policy version or invalidate unchanged
+  preparations.
 - **Bundle provenance is homed on a dedicated bootstrap case,** because
   `provenance_records.case_id` is `NOT NULL` in the schema and bundle
   provenance is not naturally case-scoped. Not a real user case; never

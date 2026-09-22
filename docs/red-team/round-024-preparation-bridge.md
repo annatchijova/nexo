@@ -222,3 +222,13 @@ before material persistence. The bridge now locks the case row, recomputes the
 manifest, and rejects persistence when it differs from the receipt. A public
 preparation endpoint does not exist yet, so the concurrent external induction
 remains deferred; the repository node writers all use the same case-row lock.
+
+### RT-024-20 — Preparation identity did not bind retry bytes
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The low-level preparation helper treated evaluation, kind, and generator as
+the complete retry key. Supplying different bytes for that key returned the
+old row without comparing content. The helper now compares the content digest
+before returning an existing row and rejects mismatches; the API test probes a
+different byte payload under the same identity.

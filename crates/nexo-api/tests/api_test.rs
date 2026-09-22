@@ -295,6 +295,24 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     assert!(preparation_id > 0);
 
+    let mismatched_retry = nexo_api::preparation::persist_prepared_material(
+        &state.pool,
+        &state.store,
+        owner,
+        repository::CaseRowId(case_id),
+        repository::ActionEvaluationRowId(evaluation_id),
+        action.clone(),
+        "draft_request",
+        "test-generator-1",
+        preparation_provenance,
+        b"different bytes for the same preparation identity",
+    )
+    .await;
+    assert!(matches!(
+        mismatched_retry,
+        Err(nexo_api::preparation::PreparationVerificationError::PreparationOutputMismatch)
+    ));
+
     let response = app
         .clone()
         .oneshot(

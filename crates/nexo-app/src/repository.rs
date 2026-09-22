@@ -806,15 +806,16 @@ pub async fn find_active_preparation(
     evaluation: ActionEvaluationRowId,
     kind: &str,
     generator_version: &str,
-) -> Result<Option<i64>, RepoError> {
+) -> Result<Option<(i64, String)>, RepoError> {
     let row = sqlx::query(
-        "SELECT id
-         FROM preparations
-         WHERE action_evaluation_id = $1
-           AND kind = $2::preparation_kind
-           AND generator_version = $3
-           AND status <> 'invalidated'::preparation_status
-         ORDER BY id
+        "SELECT preparation.id, digest.hex AS output_digest_hex
+         FROM preparations preparation
+         JOIN digests digest ON digest.id = preparation.output_digest_id
+         WHERE preparation.action_evaluation_id = $1
+           AND preparation.kind = $2::preparation_kind
+           AND preparation.generator_version = $3
+           AND preparation.status <> 'invalidated'::preparation_status
+         ORDER BY preparation.id
          LIMIT 1",
     )
     .bind(evaluation.0)
@@ -822,7 +823,7 @@ pub async fn find_active_preparation(
     .bind(generator_version)
     .fetch_optional(&mut **tx)
     .await?;
-    Ok(row.map(|row| row.get("id")))
+    Ok(row.map(|row| (row.get("id"), row.get("output_digest_hex"))))
 }
 
 pub async fn preparation_status(pool: &Pool, preparation: i64) -> Result<Option<String>, RepoError> {

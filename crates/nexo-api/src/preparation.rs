@@ -22,6 +22,7 @@ pub enum PreparationVerificationError {
     ActionFingerprintMismatch,
     InputManifestChanged,
     PolicyBundleChanged,
+    PreparationOutputMismatch,
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -199,7 +200,8 @@ pub async fn persist_prepared_material(
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
     }
-    if let Some(existing) = repository::find_active_preparation(
+    let output_digest = store.put(bytes)?;
+    if let Some((existing, existing_digest)) = repository::find_active_preparation(
         &mut tx,
         evaluation,
         kind,
@@ -207,9 +209,11 @@ pub async fn persist_prepared_material(
     )
     .await?
     {
+        if existing_digest != output_digest.to_string() {
+            return Err(PreparationVerificationError::PreparationOutputMismatch);
+        }
         return Ok(existing);
     }
-    let output_digest = store.put(bytes)?;
     let output_digest = repository::upsert_digest(&mut tx, "sha256", &output_digest.to_string())
         .await?;
     let preparation = repository::insert_preparation(
@@ -278,7 +282,8 @@ pub async fn persist_prepared_material_with_provenance(
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
     }
-    if let Some(existing) = repository::find_active_preparation(
+    let output_digest = store.put(bytes)?;
+    if let Some((existing, existing_digest)) = repository::find_active_preparation(
         &mut tx,
         evaluation,
         kind,
@@ -286,9 +291,11 @@ pub async fn persist_prepared_material_with_provenance(
     )
     .await?
     {
+        if existing_digest != output_digest.to_string() {
+            return Err(PreparationVerificationError::PreparationOutputMismatch);
+        }
         return Ok(existing);
     }
-    let output_digest = store.put(bytes)?;
     let provenance = repository::insert_provenance(
         &mut tx,
         case,

@@ -766,6 +766,26 @@ create trigger activated_normative_claim_is_immutable_trigger
     before update or delete on normative_claims
     for each row execute function activated_normative_claim_is_immutable();
 
+create function activated_normative_claim_insert_is_forbidden()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations
+        where policy_bundle_id = new.policy_bundle_id
+    ) then
+        raise exception
+            'normative claims cannot be added to activated policy bundle %',
+            new.policy_bundle_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger activated_normative_claim_insert_is_forbidden_trigger
+    before insert on normative_claims
+    for each row execute function activated_normative_claim_insert_is_forbidden();
+
 create index normative_claims_bundle_idx on normative_claims (policy_bundle_id);
 
 create type support_role as enum ('primary', 'corroborating');
@@ -938,6 +958,26 @@ $$ language plpgsql;
 create trigger activated_action_route_is_immutable_trigger
     before update or delete on action_routes
     for each row execute function activated_action_route_is_immutable();
+
+create function activated_action_route_insert_is_forbidden()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations
+        where policy_bundle_id = new.policy_bundle_id
+    ) then
+        raise exception
+            'action routes cannot be added to activated policy bundle %',
+            new.policy_bundle_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger activated_action_route_insert_is_forbidden_trigger
+    before insert on action_routes
+    for each row execute function activated_action_route_insert_is_forbidden();
 
 create table action_route_claims (
     route_id            bigint not null references action_routes (id),

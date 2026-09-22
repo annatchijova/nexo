@@ -749,12 +749,31 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .unwrap();
     tx.commit().await.unwrap();
 
+    let empty_route_bundle = {
+        let mut tx = pool.begin().await.unwrap();
+        let bundle = repository::insert_policy_bundle(
+            &mut tx,
+            "AR",
+            1,
+            "ar-empty-route",
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+            digest,
+            digest,
+            provenance,
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        bundle
+    };
+
     let mut empty_route_tx = pool.begin().await.unwrap();
     sqlx::query(
         "INSERT INTO action_routes (policy_bundle_id, jurisdiction, title)
          VALUES ($1, 'AR', 'empty route')",
     )
-    .bind(bundle.0)
+    .bind(empty_route_bundle.0)
     .execute(&mut *empty_route_tx)
     .await
     .unwrap();
@@ -764,13 +783,42 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "an action route without claims must not commit"
     );
 
+    let mut activated_route_insert_tx = pool.begin().await.unwrap();
+    let activated_route_insert = sqlx::query(
+        "INSERT INTO action_routes (policy_bundle_id, jurisdiction, title)
+         VALUES ($1, 'AR', 'late route')",
+    )
+    .bind(bundle.0)
+    .execute(&mut *activated_route_insert_tx)
+    .await;
+    assert!(
+        activated_route_insert.is_err(),
+        "activated policy bundles must reject new routes"
+    );
+    activated_route_insert_tx.rollback().await.unwrap();
+
+    let mut activated_claim_insert_tx = pool.begin().await.unwrap();
+    let activated_claim_insert = sqlx::query(
+        "INSERT INTO normative_claims
+            (policy_bundle_id, proposition, jurisdiction, validity_from)
+         VALUES ($1, 'late claim', 'AR', DATE '2026-01-01')",
+    )
+    .bind(bundle.0)
+    .execute(&mut *activated_claim_insert_tx)
+    .await;
+    assert!(
+        activated_claim_insert.is_err(),
+        "activated policy bundles must reject new claims"
+    );
+    activated_claim_insert_tx.rollback().await.unwrap();
+
     let mut empty_claim_tx = pool.begin().await.unwrap();
     sqlx::query(
         "INSERT INTO normative_claims
             (policy_bundle_id, proposition, jurisdiction, validity_from)
          VALUES ($1, 'claim without source', 'AR', DATE '2026-01-01')",
     )
-    .bind(bundle_two.0)
+    .bind(empty_route_bundle.0)
     .execute(&mut *empty_claim_tx)
     .await
     .unwrap();

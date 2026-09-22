@@ -211,7 +211,8 @@ gives:
 - **`policy_bundles`, `policy_bundle_activations`** — bundle identity is
   immutable after activation; `policy_bundle_activations` is append-only, per
   the transaction contract above. The database rejects activation updates and
-  deletes so an old activation cannot be erased to unlock historical mutation;
+  deletes, and rejects new claims or routes after activation, so an old
+  activation cannot be erased to unlock historical mutation;
   each bundle also has at most one activation event.
 - **`normative_sources`, `normative_claims`, `normative_claim_sources`** —
   mirrors `docs/POLICY_BUNDLE_CONTRACT.md`'s bundle identity fields exactly;

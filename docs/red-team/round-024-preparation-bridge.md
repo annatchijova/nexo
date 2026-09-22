@@ -529,3 +529,15 @@ all producers use SHA-256. The migration now makes the digest table's sole
 accepted representation explicit: algorithm `sha256` and exactly 64 lowercase
 hexadecimal characters. The repository regression test proves rejection before
 the row can be referenced.
+
+### RT-024-48 — Activated policy bundles accepted new definitions
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+The database froze existing claims and routes after activation, but their
+insert paths remained open. A direct writer could append new policy meaning to
+an already activated bundle without changing any frozen row. Insert guards now
+reject new claims and routes in activated bundles, with regression coverage for
+both paths. Route requirements already had an insert guard through the existing
+activation immutability trigger.

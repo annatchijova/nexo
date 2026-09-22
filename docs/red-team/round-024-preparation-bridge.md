@@ -385,6 +385,16 @@ writer could reassign ownership and thereby change who the application would
 authorize to read or mutate the entire case. The database now rejects owner
 changes after creation, with a regression test using a second actor.
 
+### RT-024-43 — Actor/case creation chronology was mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium authorization/audit boundary
+
+The actor and case roots exposed creation timestamps that could be rewritten
+directly, undermining chronology used during investigation and authorization
+review. The identity triggers now freeze those timestamps; regression coverage
+checks a direct case timestamp update.
+
 ### RT-024-42 — User assertions could be attributed across owners
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

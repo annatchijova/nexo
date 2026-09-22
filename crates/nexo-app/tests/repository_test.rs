@@ -74,6 +74,16 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assert!(owner_update.is_err(), "case ownership must be immutable");
     owner_update_tx.rollback().await.unwrap();
 
+    let mut case_time_update_tx = pool.begin().await.unwrap();
+    let case_time_update = sqlx::query(
+        "UPDATE cases SET created_at = created_at + interval '1 second' WHERE id = $1",
+    )
+    .bind(case.0)
+    .execute(&mut *case_time_update_tx)
+    .await;
+    assert!(case_time_update.is_err(), "case creation time must be immutable");
+    case_time_update_tx.rollback().await.unwrap();
+
     let mut assertion_actor_tx = pool.begin().await.unwrap();
     sqlx::query(
         "INSERT INTO case_nodes (case_id, node_id, kind)

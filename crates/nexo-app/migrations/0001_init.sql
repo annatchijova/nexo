@@ -16,7 +16,8 @@ create table actors (
 create function actor_external_identity_is_immutable()
 returns trigger as $$
 begin
-    if new.external_identity is distinct from old.external_identity then
+    if new.external_identity is distinct from old.external_identity
+       or new.created_at is distinct from old.created_at then
         raise exception 'actor external identity is immutable';
     end if;
     return new;
@@ -36,7 +37,8 @@ create table cases (
 create function case_owner_is_immutable()
 returns trigger as $$
 begin
-    if new.owner_actor_id is distinct from old.owner_actor_id then
+    if new.owner_actor_id is distinct from old.owner_actor_id
+       or new.created_at is distinct from old.created_at then
         raise exception 'case owner is immutable';
     end if;
     return new;

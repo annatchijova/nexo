@@ -46,8 +46,31 @@ function text(english: string, spanish: string): string {
   return state.language === "es" ? spanish : english;
 }
 
+function label(value: string): string {
+  const labels: Record<string, [string, string]> = {
+    artifact: ["artifact", "artefacto"],
+    observation: ["observation", "observación"],
+    user_assertion: ["user assertion", "afirmación de la usuaria"],
+    derived_fact: ["derived fact", "hecho derivado"],
+    inference: ["inference", "inferencia"],
+    prepared: ["prepared", "preparada"],
+    exported: ["exported", "exportada"],
+    non_actionable: ["non-actionable", "no accionable"],
+    insufficient_facts: ["insufficient facts", "hechos insuficientes"],
+    out_of_jurisdiction: ["out of jurisdiction", "fuera de jurisdicción"],
+    stale_policy: ["stale policy", "política desactualizada"],
+    abstention: ["abstention", "abstención"],
+    contraindicated: ["contraindicated", "contraindicada"],
+    conflicting_legal_claims: ["conflicting legal claims", "afirmaciones legales en conflicto"],
+  };
+  const [english, spanish] = labels[value] ?? [value.replaceAll("_", " "), value.replaceAll("_", " ")];
+  return text(english, spanish);
+}
+
 function applyTheme(): void {
   document.documentElement.dataset.theme = state.theme;
+  document.documentElement.lang = state.language;
+  document.title = state.language === "es" ? "NEXO — Espacio de casos" : "NEXO — Case workspace";
 }
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -98,49 +121,49 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 function renderTimeline(): string {
-  if (!state.detail) return `<p class="empty">Create or load a case to see its evidence timeline.</p>`;
-  if (state.detail.nodes.length === 0) return `<p class="empty">This case has no graph nodes yet.</p>`;
+  if (!state.detail) return `<p class="empty">${text("Create or load a case to see its evidence timeline.", "Creá o cargá un caso para ver su línea de evidencia.")}</p>`;
+  if (state.detail.nodes.length === 0) return `<p class="empty">${text("This case has no graph nodes yet.", "Este caso todavía no tiene nodos.")}</p>`;
   return `<ol class="timeline">${state.detail.nodes.map((node) => `
     <li class="node node-${node.kind}">
-      <span class="node-kind">${escapeHtml(node.kind.replace("_", " "))}</span>
-      <strong>Node ${node.node_id}</strong>
+      <span class="node-kind">${escapeHtml(label(node.kind))}</span>
+      <strong>${text("Node", "Nodo")} ${node.node_id}</strong>
       <time datetime="${escapeHtml(node.created_at)}">${escapeHtml(new Date(node.created_at).toLocaleString())}</time>
-      ${node.kind === "user_assertion" ? `<span>${node.confirmed ? "Confirmed by the owner" : "Not confirmed"}</span>` : ""}
+      ${node.kind === "user_assertion" ? `<span>${node.confirmed ? text("Confirmed by the owner", "Confirmado por la titular") : text("Not confirmed", "No confirmado")}</span>` : ""}
     </li>`).join("")}</ol>`;
 }
 
 function renderEvidence(): string {
   const supports = state.evaluation?.factual_support ?? state.evaluation?.factual_context ?? [];
-  if (!supports.length) return `<p class="muted">No factual support rendered yet.</p>`;
-  return `<ul class="support-list">${supports.map((item) => `<li>${escapeHtml(item.kind)} · node ${item.case_node_id ?? "unresolved"}</li>`).join("")}</ul>`;
+  if (!supports.length) return `<p class="muted">${text("No factual support rendered yet.", "Todavía no hay respaldo fáctico para mostrar.")}</p>`;
+  return `<ul class="support-list">${supports.map((item) => `<li>${escapeHtml(item.kind)} · ${text("node", "nodo")} ${item.case_node_id ?? text("unresolved", "sin resolver")}</li>`).join("")}</ul>`;
 }
 
 function renderEvaluation(): string {
   const evaluation = state.evaluation;
-  if (!evaluation) return `<p class="empty">Run an evaluation to see whether an action is available.</p>`;
+  if (!evaluation) return `<p class="empty">${text("Run an evaluation to see whether an action is available.", "Ejecutá una evaluación para saber si hay una acción disponible.")}</p>`;
   const actionable = evaluation.kind === "actionable";
-  const title = actionable ? (evaluation.status === "supported" ? "Supported action" : "Conditionally supported") : `No action: ${evaluation.variant ?? "non-actionable"}`;
+  const title = actionable ? (evaluation.status === "supported" ? text("Supported action", "Acción respaldada") : text("Conditionally supported", "Respaldada con condiciones")) : `${text("No action", "Sin acción")}: ${label(evaluation.variant ?? "non_actionable")}`;
   return `<article class="evaluation ${actionable && evaluation.available ? "positive" : "caution"}">
-    <div class="evaluation-heading"><span class="eyebrow">${actionable ? "ACTION OPTION" : "HONEST NEGATIVE"}</span><h3>${escapeHtml(title)}</h3></div>
-    <p>${actionable ? (evaluation.available ? "This route is available from the recorded support." : "This route is not available until its requirements are met.") : escapeHtml(evaluation.cause ? `Reason: ${evaluation.cause.replaceAll("_", " ")}.` : "The current case does not support an available action.")}</p>
-    <h4>Why this is shown</h4>${renderEvidence()}
-    ${evaluation.legal_support?.length ? `<h4>Legal support</h4><ul class="citation-list">${evaluation.legal_support.map((citation) => { const sourceUrl = safeExternalUrl(citation.source_locator); return `<li><strong>${escapeHtml(citation.proposition)}</strong><span>${escapeHtml(citation.source_issuer)}</span>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">Open captured source</a>` : "<span class=\"muted\">Captured source has no safe web URL</span>"}</li>`; }).join("")}</ul>` : ""}
+    <div class="evaluation-heading"><span class="eyebrow">${actionable ? text("ACTION OPTION", "OPCIÓN DE ACCIÓN") : text("HONEST NEGATIVE", "NEGATIVA HONESTA")}</span><h3>${escapeHtml(title)}</h3></div>
+    <p>${actionable ? (evaluation.available ? text("This route is available from the recorded support.", "Esta vía está disponible según el respaldo registrado.") : text("This route is not available until its requirements are met.", "Esta vía no está disponible hasta cumplir sus requisitos.")) : escapeHtml(evaluation.cause ? `${text("Reason", "Motivo")}: ${label(evaluation.cause)}.` : text("The current case does not support an available action.", "El caso actual no respalda una acción disponible."))}</p>
+    <h4>${text("Why this is shown", "Por qué aparece esto")}</h4>${renderEvidence()}
+    ${evaluation.legal_support?.length ? `<h4>${text("Legal support", "Respaldo legal")}</h4><ul class="citation-list">${evaluation.legal_support.map((citation) => { const sourceUrl = safeExternalUrl(citation.source_locator); return `<li><strong>${escapeHtml(citation.proposition)}</strong><span>${escapeHtml(citation.source_issuer)}</span>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">${text("Open captured source", "Abrir fuente capturada")}</a>` : `<span class="muted">${text("Captured source has no safe web URL", "La fuente capturada no tiene una URL web segura")}</span>`}</li>`; }).join("")}</ul>` : ""}
   </article>`;
 }
 
 function renderPreparation(): string {
   const evaluation = state.evaluation;
   if (!evaluation?.available || !state.evaluationId) {
-    return `<p class="muted">A preparation appears only after the current evaluation returns an available action.</p>`;
+    return `<p class="muted">${text("A preparation appears only after the current evaluation returns an available action.", "La preparación aparece cuando la evaluación devuelve una acción disponible.")}</p>`;
   }
   const preparation = state.preparation;
   return `<div class="preparation-card">
-    <p class="muted">This creates local, deterministic material. It does not send, file, sign, or notify anyone.</p>
-    ${preparation ? `<p><strong>Preparation ${preparation.preparation_id}</strong> · <span class="badge">${escapeHtml(preparation.status)}</span>${preparation.manifest_digest ? `<br><span class="digest">Manifest ${escapeHtml(preparation.manifest_digest)}</span>` : ""}</p>` : "<p class=\"muted\">No draft prepared for this evaluation yet.</p>"}
+    <p class="muted">${text("This creates local, deterministic material. It does not send, file, sign, or notify anyone.", "Esto crea material local y determinista. No envía, presenta, firma ni notifica a nadie.")}</p>
+    ${preparation ? `<p><strong>${text("Preparation", "Preparación")} ${preparation.preparation_id}</strong> · <span class="badge">${escapeHtml(label(preparation.status))}</span>${preparation.manifest_digest ? `<br><span class="digest">${text("Manifest", "Manifiesto")} ${escapeHtml(preparation.manifest_digest)}</span>` : ""}</p>` : `<p class="muted">${text("No draft prepared for this evaluation yet.", "Todavía no hay un borrador preparado para esta evaluación.")}</p>`}
     <div class="button-row">
-      <button id="prepare" class="secondary">${preparation ? "Refresh draft" : "Prepare draft"}</button>
-      ${preparation ? `<button id="export"${preparation.status === "exported" ? " class=\"secondary\"" : ""}>${preparation.status === "exported" ? "Verify export" : "Export locally"}</button>` : ""}
-      ${preparation?.status === "exported" ? `<button id="download-manifest" class="secondary">Download manifest</button><button id="download-artifact" class="secondary">Download artifact</button>` : ""}
+      <button id="prepare" class="secondary">${preparation ? text("Refresh draft", "Actualizar borrador") : text("Prepare draft", "Preparar borrador")}</button>
+      ${preparation ? `<button id="export"${preparation.status === "exported" ? " class=\"secondary\"" : ""}>${preparation.status === "exported" ? text("Verify export", "Verificar exportación") : text("Export locally", "Exportar localmente")}</button>` : ""}
+      ${preparation?.status === "exported" ? `<button id="download-manifest" class="secondary">${text("Download manifest", "Descargar manifiesto")}</button><button id="download-artifact" class="secondary">${text("Download artifact", "Descargar artefacto")}</button>` : ""}
     </div>
   </div>`;
 }
@@ -174,7 +197,7 @@ function feedback(message: string, error = false): void {
 }
 
 async function whileBusy<T>(button: HTMLButtonElement, label: string, task: () => Promise<T>): Promise<T> {
-  const originalLabel = button.textContent ?? "Working";
+  const originalLabel = button.textContent ?? text("Working", "Procesando");
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = label;
@@ -215,77 +238,77 @@ function bindEvents(): void {
     event.preventDefault();
     state.apiBase = document.querySelector<HTMLInputElement>("#api-base")?.value.trim() ?? "";
     state.token = document.querySelector<HTMLInputElement>("#token")?.value.trim() ?? "";
-    localStorage.setItem("nexo-api-base", state.apiBase); localStorage.setItem("nexo-token", state.token); feedback("Connection saved.");
+    localStorage.setItem("nexo-api-base", state.apiBase); localStorage.setItem("nexo-token", state.token); feedback(text("Connection saved.", "Conexión guardada."));
   });
   document.querySelector<HTMLButtonElement>("#new-case")?.addEventListener("click", async () => {
     const button = document.querySelector<HTMLButtonElement>("#new-case");
     if (!button) return;
-    try { await whileBusy(button, "Creating…", async () => { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; state.evaluationId = null; state.preparation = null; render(); }); }
-    catch (error) { feedback(error instanceof Error ? error.message : "Could not create the case.", true); }
+    try { await whileBusy(button, text("Creating…", "Creando…"), async () => { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; state.evaluationId = null; state.preparation = null; render(); }); }
+    catch (error) { feedback(error instanceof Error ? error.message : text("Could not create the case.", "No se pudo crear el caso."), true); }
   });
   document.querySelector<HTMLFormElement>("#evidence-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault(); if (!state.caseId) return feedback("Create a case first.", true);
-    const text = document.querySelector<HTMLTextAreaElement>("#evidence-text")?.value ?? "";
+    event.preventDefault(); if (!state.caseId) return feedback(text("Create a case first.", "Primero creá un caso."), true);
+    const evidenceText = document.querySelector<HTMLTextAreaElement>("#evidence-text")?.value ?? "";
     const button = document.querySelector<HTMLButtonElement>("#evidence-form button[type=submit]");
     if (!button) return;
-    try { await whileBusy(button, "Extracting…", async () => { await request(`/v1/cases/${state.caseId}/evidence`, { method: "POST", body: JSON.stringify({ filename: document.querySelector<HTMLInputElement>("#filename")?.value || null, text }) }); await loadCase(); }); feedback("Evidence recorded; extraction result is visible in the case timeline."); }
-    catch (error) { feedback(error instanceof Error ? error.message : "Evidence intake failed.", true); }
+    try { await whileBusy(button, text("Extracting…", "Extrayendo…"), async () => { await request(`/v1/cases/${state.caseId}/evidence`, { method: "POST", body: JSON.stringify({ filename: document.querySelector<HTMLInputElement>("#filename")?.value || null, text: evidenceText }) }); await loadCase(); }); feedback(text("Evidence recorded; extraction result is visible in the case timeline.", "Evidencia registrada; el resultado de extracción aparece en la línea del caso.")); }
+    catch (error) { feedback(error instanceof Error ? error.message : text("Evidence intake failed.", "Falló el ingreso de evidencia."), true); }
   });
   document.querySelector<HTMLButtonElement>("#confirm-assertion")?.addEventListener("click", async () => {
-    if (!state.caseId) return feedback("Create a case first.", true);
+    if (!state.caseId) return feedback(text("Create a case first.", "Primero creá un caso."), true);
     const button = document.querySelector<HTMLButtonElement>("#confirm-assertion");
     if (!button) return;
-    try { await whileBusy(button, "Recording…", async () => { await request(`/v1/cases/${state.caseId}/assertions`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); await loadCase(); }); feedback("Confirmed assertion recorded."); }
-    catch (error) { feedback(error instanceof Error ? error.message : "Could not record assertion.", true); }
+    try { await whileBusy(button, text("Recording…", "Registrando…"), async () => { await request(`/v1/cases/${state.caseId}/assertions`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); await loadCase(); }); feedback(text("Confirmed assertion recorded.", "Afirmación confirmada registrada.")); }
+    catch (error) { feedback(error instanceof Error ? error.message : text("Could not record assertion.", "No se pudo registrar la afirmación."), true); }
   });
   document.querySelector<HTMLButtonElement>("#evaluate")?.addEventListener("click", async () => {
-    if (!state.caseId) return feedback("Create a case first.", true);
+    if (!state.caseId) return feedback(text("Create a case first.", "Primero creá un caso."), true);
     const button = document.querySelector<HTMLButtonElement>("#evaluate");
     if (!button) return;
-    try { await whileBusy(button, "Evaluating…", async () => { const response = await request<{ evaluation_id: number; result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluationId = response.evaluation_id; state.evaluation = response.result; state.preparation = null; render(); }); }
-    catch (error) { feedback(error instanceof Error ? error.message : "Evaluation failed.", true); }
+    try { await whileBusy(button, text("Evaluating…", "Evaluando…"), async () => { const response = await request<{ evaluation_id: number; result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluationId = response.evaluation_id; state.evaluation = response.result; state.preparation = null; render(); }); }
+    catch (error) { feedback(error instanceof Error ? error.message : text("Evaluation failed.", "Falló la evaluación."), true); }
   });
   document.querySelector<HTMLButtonElement>("#prepare")?.addEventListener("click", async () => {
-    if (!state.caseId || !state.evaluationId) return feedback("Run an available evaluation first.", true);
+    if (!state.caseId || !state.evaluationId) return feedback(text("Run an available evaluation first.", "Primero ejecutá una evaluación disponible."), true);
     const button = document.querySelector<HTMLButtonElement>("#prepare");
     if (!button) return;
     try {
-      await whileBusy(button, "Preparing…", async () => {
+      await whileBusy(button, text("Preparing…", "Preparando…"), async () => {
         state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations`, { method: "POST", body: JSON.stringify({ evaluation_id: state.evaluationId, kind: "draft_request" }) });
         render();
       });
-      feedback("Local preparation is ready; nothing was sent externally.");
-    } catch (error) { feedback(error instanceof Error ? error.message : "Preparation failed.", true); }
+      feedback(text("Local preparation is ready; nothing was sent externally.", "La preparación local está lista; no se envió nada externamente."));
+    } catch (error) { feedback(error instanceof Error ? error.message : text("Preparation failed.", "Falló la preparación."), true); }
   });
   document.querySelector<HTMLButtonElement>("#export")?.addEventListener("click", async () => {
     if (!state.caseId || !state.preparation) return;
     const button = document.querySelector<HTMLButtonElement>("#export");
     if (!button) return;
     try {
-      await whileBusy(button, "Exporting…", async () => {
+      await whileBusy(button, text("Exporting…", "Exportando…"), async () => {
         state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations/${state.preparation?.preparation_id}/export`, { method: "POST" });
         render();
       });
-      feedback("Export verified and available for download; no external act was performed.");
-    } catch (error) { feedback(error instanceof Error ? error.message : "Export failed verification.", true); }
+      feedback(text("Export verified and available for download; no external act was performed.", "Exportación verificada y disponible para descargar; no se realizó ningún acto externo."));
+    } catch (error) { feedback(error instanceof Error ? error.message : text("Export failed verification.", "Falló la verificación de la exportación."), true); }
   });
   document.querySelector<HTMLButtonElement>("#download-manifest")?.addEventListener("click", async () => {
     if (!state.caseId || !state.preparation) return;
     try { downloadBlob(await requestBytes(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/manifest`), `nexo-preparation-${state.preparation.preparation_id}-manifest.json`); }
-    catch (error) { feedback(error instanceof Error ? error.message : "Manifest download failed.", true); }
+    catch (error) { feedback(error instanceof Error ? error.message : text("Manifest download failed.", "Falló la descarga del manifiesto."), true); }
   });
   document.querySelector<HTMLButtonElement>("#download-artifact")?.addEventListener("click", async () => {
     if (!state.caseId || !state.preparation) return;
     try {
       const manifest = await request<{ artifacts: Array<{ digest: string }> }>(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/manifest`);
       const digest = manifest.artifacts[0]?.digest;
-      if (!digest) throw new Error("Export has no downloadable artifact.");
+      if (!digest) throw new Error(text("Export has no downloadable artifact.", "La exportación no tiene un artefacto descargable."));
       downloadBlob(await requestBytes(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/artifacts/${digest}`), `nexo-preparation-${state.preparation.preparation_id}-${digest}.bin`);
-    } catch (error) { feedback(error instanceof Error ? error.message : "Artifact download failed.", true); }
+    } catch (error) { feedback(error instanceof Error ? error.message : text("Artifact download failed.", "Falló la descarga del artefacto."), true); }
   });
 }
 
 render();
 if (state.caseId && state.token) {
-  loadCase().catch((error) => feedback(error instanceof Error ? error.message : "Could not load the saved case.", true));
+  loadCase().catch((error) => feedback(error instanceof Error ? error.message : text("Could not load the saved case.", "No se pudo cargar el caso guardado."), true));
 }

@@ -33,7 +33,7 @@ type Evaluation = {
 const state = {
   language: localStorage.getItem("nexo-language") === "es" ? "es" : "en",
   theme: localStorage.getItem("nexo-theme") === "light" ? "light" : "dark",
-  apiBase: localStorage.getItem("nexo-api-base") ?? import.meta.env.VITE_NEXO_API_BASE ?? "",
+  apiBase: localStorage.getItem("nexo-api-base") || import.meta.env.VITE_NEXO_API_BASE || "",
   token: localStorage.getItem("nexo-token") ?? "",
   caseId: Number(localStorage.getItem("nexo-case-id")) || null,
   detail: null as CaseDetail | null,

@@ -7,5 +7,6 @@
 
 pub const SCHEMA_MIGRATION: &str = include_str!("../migrations/0001_init.sql");
 
+pub mod export;
 pub mod object_store;
 pub mod repository;

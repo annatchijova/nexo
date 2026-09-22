@@ -936,6 +936,7 @@ dependencies = [
  "chrono",
  "nexo-core",
  "nexo-integrity",
+ "nexo-verifier",
  "serde",
  "serde_json",
  "sqlx",

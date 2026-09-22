@@ -1481,19 +1481,23 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         .execute(&mut *non_actionable_tx)
         .await
         .unwrap();
-    sqlx::query(
-        "UPDATE action_evaluations
-         SET result_kind = 'non_actionable', action_status = NULL,
-             non_actionable_variant = 'insufficient_facts'
-         WHERE id = $1",
+    let non_actionable_evaluation = repository::insert_action_evaluation(
+        &mut non_actionable_tx,
+        case,
+        route,
+        bundle,
+        "0.1.0",
+        "non_actionable",
+        None,
+        Some("insufficient_facts"),
+        1,
+        json!({"reason": "insufficient facts"}),
     )
-    .bind(evaluation.0)
-    .execute(&mut *non_actionable_tx)
     .await
     .unwrap();
     let non_actionable_receipt = repository::insert_evaluation_receipt(
         &mut non_actionable_tx,
-        evaluation,
+        non_actionable_evaluation,
         case,
         route,
         bundle,

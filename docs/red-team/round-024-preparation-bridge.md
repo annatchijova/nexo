@@ -588,3 +588,14 @@ available for audit. Once the receipt was deleted, a direct writer could also
 delete the evaluation because no append-only guard covered that table. The
 database now rejects evaluation deletes while preserving receipt invalidation,
 with regression coverage for the two-step delete attempt.
+
+### RT-024-53 — Receipt deletion reopened evaluation mutation
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** critical evidence-integrity boundary
+
+The first immutability guard only rejected updates while a receipt row still
+existed. A direct writer could delete the receipt, then rewrite the sealed
+evaluation result while retaining the same durable evaluation identity. The
+database now rejects every evaluation update and delete after insertion; a
+separate non-actionable evaluation is used when testing receipt rejection.

@@ -229,7 +229,7 @@ gives:
 - **`action_evaluations`** — top-level columns plus the sealed JSON payload,
   as described above; the database requires the referenced policy bundle to
   have an activation record before an evaluation can be persisted, and keeps
-  evaluation history append-only.
+  each evaluation immutable after insertion.
 - **`evaluation_receipts`** — application-owned binding evidence for a
   `SUPPORTED` evaluation: durable evaluation/action/case/bundle identities,
   result and input-manifest digests, and schema/version fields. These receipts

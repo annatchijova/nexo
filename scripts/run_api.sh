@@ -30,11 +30,10 @@ if ! docker image inspect nexo-extractor-plaintext:local >/dev/null 2>&1; then
 fi
 
 export DATABASE_URL="postgres://postgres:nexo@127.0.0.1:${PORT}/${DB}"
-export NEXO_BOOTSTRAP_OWNER="${NEXO_BOOTSTRAP_OWNER:-dev-owner-token}"
+: "${NEXO_BOOTSTRAP_OWNER:?NEXO_BOOTSTRAP_OWNER must be set; it is never printed by this script}"
 export NEXO_OBJECT_STORE_ROOT="${NEXO_OBJECT_STORE_ROOT:-./.dev-data/objects}"
 export NEXO_BIND_ADDR="${NEXO_BIND_ADDR:-127.0.0.1:8080}"
 export RUST_LOG="${RUST_LOG:-nexo_api=debug,tower_http=debug}"
 
-echo "== bootstrap owner token: ${NEXO_BOOTSTRAP_OWNER} =="
 echo "== listening on ${NEXO_BIND_ADDR} =="
 cargo run -p nexo-api

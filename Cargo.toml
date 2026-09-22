@@ -9,6 +9,7 @@ members = [
     "crates/nexo-extraction",
     "crates/nexo-policy-ar",
     "crates/nexo-api",
+    "crates/nexo-verifier",
 ]
 resolver = "3"
 

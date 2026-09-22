@@ -46,7 +46,19 @@ async fn unique_actor(pool: &PgPool, label: &str) -> ActorRowId {
 async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let Some(pool) = pool().await else { return };
     let actor = unique_actor(&pool, "seq").await;
+    let other_actor = unique_actor(&pool, "other-owner").await;
     let case = repository::create_case(&pool, actor).await.unwrap();
+
+    let mut owner_update_tx = pool.begin().await.unwrap();
+    let owner_update = sqlx::query(
+        "UPDATE cases SET owner_actor_id = $1 WHERE id = $2",
+    )
+    .bind(other_actor.0)
+    .bind(case.0)
+    .execute(&mut *owner_update_tx)
+    .await;
+    assert!(owner_update.is_err(), "case ownership must be immutable");
+    owner_update_tx.rollback().await.unwrap();
 
     let mut audit_insert_tx = pool.begin().await.unwrap();
     let audit_row = sqlx::query(

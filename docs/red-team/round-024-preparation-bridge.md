@@ -375,6 +375,16 @@ the referenced version number or tool identity after extraction. The database
 now freezes tool and tool-version identity fields while allowing idempotent
 same-value upserts, with regression coverage for a version update.
 
+### RT-024-40 — Case ownership could be reassigned directly
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** critical authorization boundary
+
+The case root stored an owner foreign key but did not freeze it. A direct
+writer could reassign ownership and thereby change who the application would
+authorize to read or mutate the entire case. The database now rejects owner
+changes after creation, with a regression test using a second actor.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

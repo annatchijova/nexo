@@ -19,6 +19,20 @@ create table cases (
     created_at          timestamptz not null default now()
 );
 
+create function case_owner_is_immutable()
+returns trigger as $$
+begin
+    if new.owner_actor_id is distinct from old.owner_actor_id then
+        raise exception 'case owner is immutable';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger case_owner_is_immutable_trigger
+    before update on cases
+    for each row execute function case_owner_is_immutable();
+
 create index cases_owner_actor_id_idx on cases (owner_actor_id);
 
 -- ---------------------------------------------------------------------

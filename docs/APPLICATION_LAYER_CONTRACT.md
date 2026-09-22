@@ -66,6 +66,10 @@ does not mean unauthenticated: the owner is recorded and checked on every
 command, so adding a second actor later is a matter of issuing a second
 identity, not rewriting the access model.
 
+The database also rejects reassignment of `owner_actor_id` after case
+creation; changing access requires an explicit future sharing model, not a
+mutation of the case root.
+
 `ActorId` here is the same opaque identity type referenced by
 `UserAssertionNode` in `nexo-core`; the application layer is what gives that
 id a durable row and an external identity (how the actor authenticates),

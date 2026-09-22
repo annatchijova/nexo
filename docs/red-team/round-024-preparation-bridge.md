@@ -171,6 +171,17 @@ the existing non-invalidated preparation for the same evaluation, kind, and
 generator version. The API test repeats the request and asserts the same
 preparation id.
 
+### RT-024-17 — Policy activation could race preparation persistence
+
+**Level:** PLAUSIBLE HYPOTHESIS → HARDENED; concurrent induction deferred
+
+The activation trigger invalidated preparations that already existed, but a
+concurrent preparation could pass its receipt check and insert after the
+activation trigger ran. Preparation and activation now share a jurisdiction
+advisory lock, and preparation rechecks that its bundle is the latest active
+one before inserting. A deterministic concurrent database probe remains
+deferred; both repository paths now use the same serialization point.
+
 ### RT-024-13 — Receipted evaluation result could be rewritten
 
 **Level:** CONFIRMED BY INDUCTION → REMEDIATED

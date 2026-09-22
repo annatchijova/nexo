@@ -434,6 +434,7 @@ pub async fn activate_policy_bundle(
     bundle: PolicyBundleRowId,
     activated_by: ActorRowId,
 ) -> Result<(), RepoError> {
+    lock_policy_jurisdiction(tx, bundle).await?;
     sqlx::query(
         "INSERT INTO policy_bundle_activations (policy_bundle_id, activated_by_actor_id)
          VALUES ($1, $2)",
@@ -443,6 +444,47 @@ pub async fn activate_policy_bundle(
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+pub async fn lock_policy_jurisdiction(
+    tx: &mut Tx<'_>,
+    bundle: PolicyBundleRowId,
+) -> Result<(), RepoError> {
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(
+             hashtextextended(
+                 'nexo-policy-activation:' || jurisdiction,
+                 0
+             )
+         )
+         FROM policy_bundles
+         WHERE id = $1",
+    )
+    .bind(bundle.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub async fn current_policy_bundle_id(
+    tx: &mut Tx<'_>,
+    bundle: PolicyBundleRowId,
+) -> Result<Option<i64>, RepoError> {
+    let row = sqlx::query(
+        "SELECT activation.policy_bundle_id
+         FROM policy_bundle_activations activation
+         JOIN policy_bundles active_bundle
+           ON active_bundle.id = activation.policy_bundle_id
+         WHERE active_bundle.jurisdiction = (
+             SELECT jurisdiction FROM policy_bundles WHERE id = $1
+         )
+         ORDER BY activation.activated_at DESC, activation.id DESC
+         LIMIT 1",
+    )
+    .bind(bundle.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.map(|row| row.get("policy_bundle_id")))
 }
 
 #[allow(clippy::too_many_arguments)]

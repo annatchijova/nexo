@@ -21,6 +21,7 @@ pub enum PreparationVerificationError {
     InvalidDurableIdentity,
     ActionFingerprintMismatch,
     InputManifestChanged,
+    PolicyBundleChanged,
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -173,6 +174,20 @@ pub async fn persist_prepared_material(
         .await
         .map_err(repository::RepoError::from)?;
     repository::lock_case(&mut tx, case).await?;
+    repository::lock_policy_jurisdiction(
+        &mut tx,
+        repository::PolicyBundleRowId(binding.policy_bundle_id),
+    )
+    .await?;
+    if repository::current_policy_bundle_id(
+        &mut tx,
+        repository::PolicyBundleRowId(binding.policy_bundle_id),
+    )
+    .await?
+        != Some(binding.policy_bundle_id)
+    {
+        return Err(PreparationVerificationError::PolicyBundleChanged);
+    }
     let current_manifest = crate::projection::current_input_manifest_digest(pool, case)
         .await
         .map_err(|error| match error {
@@ -238,6 +253,20 @@ pub async fn persist_prepared_material_with_provenance(
         .await
         .map_err(repository::RepoError::from)?;
     repository::lock_case(&mut tx, case).await?;
+    repository::lock_policy_jurisdiction(
+        &mut tx,
+        repository::PolicyBundleRowId(binding.policy_bundle_id),
+    )
+    .await?;
+    if repository::current_policy_bundle_id(
+        &mut tx,
+        repository::PolicyBundleRowId(binding.policy_bundle_id),
+    )
+    .await?
+        != Some(binding.policy_bundle_id)
+    {
+        return Err(PreparationVerificationError::PolicyBundleChanged);
+    }
     let current_manifest = crate::projection::current_input_manifest_digest(pool, case)
         .await
         .map_err(|error| match error {

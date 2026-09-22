@@ -235,7 +235,8 @@ pub async fn prepare_case(
         crate::preparation::PreparationVerificationError::ReceiptNotFound
         | crate::preparation::PreparationVerificationError::EvaluationNotSupported
         | crate::preparation::PreparationVerificationError::ActionFingerprintMismatch
-        | crate::preparation::PreparationVerificationError::InputManifestChanged => (
+        | crate::preparation::PreparationVerificationError::InputManifestChanged
+        | crate::preparation::PreparationVerificationError::PolicyBundleChanged => (
             StatusCode::CONFLICT,
             "evaluation is stale or unsupported",
         ),

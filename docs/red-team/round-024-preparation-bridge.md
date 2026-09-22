@@ -589,6 +589,17 @@ delete the evaluation because no append-only guard covered that table. The
 database now rejects evaluation deletes while preserving receipt invalidation,
 with regression coverage for the two-step delete attempt.
 
+### RT-024-55 — Invalidated preparations could omit a reason on insert
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium lifecycle/audit boundary
+
+The lifecycle trigger required `invalidation_reason` for updates into the
+`invalidated` state, but a direct insert could declare that state with a null
+or blank reason. A table check now enforces the same requirement on every
+insert and update, with regression coverage for an invalidated row without a
+reason.
+
 ### RT-024-53 — Receipt deletion reopened evaluation mutation
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

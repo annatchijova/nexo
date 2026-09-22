@@ -1399,7 +1399,11 @@ create table preparations (
     prepared_at                 timestamptz not null default now(),
     output_digest_id             bigint not null references digests (id),
     output_provenance_id          bigint not null references provenance_records (id),
-    invalidation_reason            text
+    invalidation_reason            text,
+    check (
+        status <> 'invalidated'::preparation_status
+        or nullif(trim(invalidation_reason), '') is not null
+    )
 );
 
 create index preparations_action_evaluation_idx

@@ -239,7 +239,8 @@ gives:
   referencing the `action_evaluations` row whose `Actionable` result they
   were prepared from; a preparation can never reference a
   `NonActionable` evaluation, enforced at the application layer at
-  preparation-insert time.
+  preparation-insert time, and every invalidated preparation carries a
+  non-empty reason.
 - **`audit_log`** — append-only, hash-chained event record (Step 2 of
   `plan.md` defines the chain itself in `nexo-integrity`); this layer only
   guarantees every command that mutates state also appends exactly one audit

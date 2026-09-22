@@ -64,6 +64,21 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assert_eq!(a2.0, 2);
     assert_eq!(a3.0, 3);
 
+    let mut kind_update_tx = pool.begin().await.unwrap();
+    let kind_update = sqlx::query(
+        "UPDATE case_nodes SET kind = 'artifact'::case_node_kind
+         WHERE case_id = $1 AND node_id = $2",
+    )
+    .bind(case.0)
+    .bind(a1.0)
+    .execute(&mut *kind_update_tx)
+    .await;
+    assert!(
+        kind_update.is_err(),
+        "a case node discriminator must be immutable"
+    );
+    kind_update_tx.rollback().await.unwrap();
+
     let mut mismatched_payload_tx = pool.begin().await.unwrap();
     let digest = repository::upsert_digest(&mut mismatched_payload_tx, "sha256", &"aa".repeat(32))
         .await

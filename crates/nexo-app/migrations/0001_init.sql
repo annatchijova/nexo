@@ -117,6 +117,21 @@ create table case_nodes (
     primary key (case_id, node_id)
 );
 
+create function case_node_kind_is_immutable()
+returns trigger as $$
+begin
+    if new.kind is distinct from old.kind then
+        raise exception
+            'case node (% %) kind is immutable', old.case_id, old.node_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger case_node_kind_is_immutable_trigger
+    before update on case_nodes
+    for each row execute function case_node_kind_is_immutable();
+
 create table artifact_nodes (
     case_id                 bigint not null,
     node_id                 bigint not null,

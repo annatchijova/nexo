@@ -313,6 +313,16 @@ artifact payload to a user-assertion node, violating the graph's typed-node
 invariant. A shared trigger now checks every payload table against the declared
 kind, with a regression test for a cross-kind insert.
 
+### RT-024-32 — Case-node discriminator remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high case-graph integrity boundary
+
+After the payload-kind trigger was added, a direct writer could still update
+`case_nodes.kind` itself and make an existing payload disagree with its
+discriminator. The new trigger rejects kind changes, with a regression probe
+against an existing user-assertion node.
+
 ### RT-024-30 — Derived facts could consume interpretations
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

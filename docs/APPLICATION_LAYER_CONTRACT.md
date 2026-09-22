@@ -219,7 +219,8 @@ gives:
   deferred database constraint, so a claim and its source edge may still be
   assembled atomically.
 - **`action_routes`** — the durable form of `ActionRoute`: which claims and
-  mandatory requirements a route requires. Once its bundle is activated, the
+  mandatory requirements a route requires; a deferred database constraint
+  requires at least one claim. Once its bundle is activated, the
   database also freezes its requirement rows; route-claim ordinals are unique
   within each route.
 - **`action_evaluations`** — top-level columns plus the sealed JSON payload,

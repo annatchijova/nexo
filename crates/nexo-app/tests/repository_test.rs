@@ -749,6 +749,21 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .unwrap();
     tx.commit().await.unwrap();
 
+    let mut empty_route_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO action_routes (policy_bundle_id, jurisdiction, title)
+         VALUES ($1, 'AR', 'empty route')",
+    )
+    .bind(bundle.0)
+    .execute(&mut *empty_route_tx)
+    .await
+    .unwrap();
+    let empty_route_commit = empty_route_tx.commit().await;
+    assert!(
+        empty_route_commit.is_err(),
+        "an action route without claims must not commit"
+    );
+
     let mut empty_claim_tx = pool.begin().await.unwrap();
     sqlx::query(
         "INSERT INTO normative_claims

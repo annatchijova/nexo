@@ -980,6 +980,54 @@ create trigger action_route_claim_matches_bundle_trigger
     before insert or update on action_route_claims
     for each row execute function action_route_claim_matches_bundle();
 
+create function action_route_requires_claim()
+returns trigger as $$
+begin
+    if not exists (
+        select 1
+        from action_route_claims
+        where route_id = new.id
+    ) then
+        raise exception 'action route % requires at least one claim', new.id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create function action_route_claim_edge_preserves_route_claim()
+returns trigger as $$
+begin
+    if not exists (
+        select 1
+        from action_route_claims
+        where route_id = old.route_id
+    ) then
+        raise exception 'action route % requires at least one claim', old.route_id;
+    end if;
+
+    if tg_op = 'UPDATE'
+       and new.route_id is distinct from old.route_id
+       and not exists (
+           select 1
+           from action_route_claims
+           where route_id = new.route_id
+       ) then
+        raise exception 'action route % requires at least one claim', new.route_id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger action_route_requires_claim_trigger
+    after insert or update on action_routes
+    deferrable initially deferred
+    for each row execute function action_route_requires_claim();
+
+create constraint trigger action_route_claim_edge_requires_route_claim_trigger
+    after update or delete on action_route_claims
+    deferrable initially deferred
+    for each row execute function action_route_claim_edge_preserves_route_claim();
+
 create function activated_action_route_claims_are_immutable()
 returns trigger as $$
 begin

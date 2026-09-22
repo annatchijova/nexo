@@ -492,6 +492,18 @@ writer could bind a valid but unrelated digest to an otherwise valid bundle.
 The new trigger rejects that mismatch, with a repository regression test using
 an isolated failed insert.
 
+### RT-024-47 — Empty action routes bypassed the non-empty claim invariant
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-evaluation boundary
+
+`insert_action_route` rejected an empty claim slice, but the SQL schema allowed
+direct writers to commit a route with no claim edges. That route could reach
+later evaluation code without the normative support required by `ActionRoute`.
+A deferred constraint now requires at least one claim and preserves the same
+invariant if the last claim edge is removed or moved, with regression coverage
+for an empty-route commit.
+
 ### RT-024-46 — Bare case nodes could commit without typed payloads
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

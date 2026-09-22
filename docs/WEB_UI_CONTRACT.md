@@ -18,6 +18,9 @@ actions, interpret evidence, call a model, or perform an external legal act.
 - Restore the latest recorded evaluation when the saved case is re-opened.
 - Show factual support node ids and captured legal-source citations whenever
   the API returns them.
+- Prepare a deterministic local draft only after an available evaluation.
+- Export an owner-authorized preparation and download its independently
+  verified manifest and artifacts by digest.
 
 The UI treats an extraction rejection or non-actionable evaluation as a
 first-class visible state. It never turns missing support into an available
@@ -45,8 +48,8 @@ origin as the API or configure an explicit equivalent proxy.
 
 ## Non-goals for this slice
 
-- Preparation/export UI is not implemented yet; the API capabilities exist but
-  must be surfaced with explicit preview and download affordances.
+- The UI does not preview, edit, or send preparation material; it only exposes
+  the API's explicit export and download actions.
 - No artifact preview, OCR, parsing, or decompression occurs in the browser.
 - No credential-management claim is made beyond the API contract's
   single-owner bearer-token limitation.

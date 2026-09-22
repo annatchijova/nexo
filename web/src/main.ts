@@ -8,7 +8,13 @@ type CaseNode = {
 };
 
 type CaseDetail = { case_id: number; nodes: CaseNode[] };
-type EvaluationRecord = { result: Evaluation };
+type EvaluationRecord = { evaluation_id: number; result: Evaluation };
+type Preparation = {
+  preparation_id: number;
+  status: "prepared" | "exported";
+  manifest_digest?: string;
+  artifact_count?: number;
+};
 type Citation = { proposition: string; source_issuer: string; source_locator: string };
 type Evaluation = {
   kind: "actionable" | "non_actionable";
@@ -30,6 +36,8 @@ const state = {
   caseId: Number(localStorage.getItem("nexo-case-id")) || null,
   detail: null as CaseDetail | null,
   evaluation: null as Evaluation | null,
+  evaluationId: null as number | null,
+  preparation: null as Preparation | null,
 };
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -53,6 +61,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(endpoint(path), { ...init, headers });
   if (!response.ok) throw new Error(`${response.status}: ${(await response.text()) || response.statusText}`);
   return response.json() as Promise<T>;
+}
+
+async function requestBytes(path: string): Promise<Blob> {
+  const headers = new Headers({ Authorization: `Bearer ${state.token}` });
+  const response = await fetch(endpoint(path), { headers });
+  if (!response.ok) throw new Error(`${response.status}: ${(await response.text()) || response.statusText}`);
+  return response.blob();
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function renderTimeline(): string {
@@ -86,6 +109,23 @@ function renderEvaluation(): string {
   </article>`;
 }
 
+function renderPreparation(): string {
+  const evaluation = state.evaluation;
+  if (!evaluation?.available || !state.evaluationId) {
+    return `<p class="muted">A preparation appears only after the current evaluation returns an available action.</p>`;
+  }
+  const preparation = state.preparation;
+  return `<div class="preparation-card">
+    <p class="muted">This creates local, deterministic material. It does not send, file, sign, or notify anyone.</p>
+    ${preparation ? `<p><strong>Preparation ${preparation.preparation_id}</strong> · <span class="badge">${escapeHtml(preparation.status)}</span>${preparation.manifest_digest ? `<br><span class="digest">Manifest ${escapeHtml(preparation.manifest_digest)}</span>` : ""}</p>` : "<p class=\"muted\">No draft prepared for this evaluation yet.</p>"}
+    <div class="button-row">
+      <button id="prepare" class="secondary">${preparation ? "Refresh draft" : "Prepare draft"}</button>
+      ${preparation ? `<button id="export"${preparation.status === "exported" ? " class=\"secondary\"" : ""}>${preparation.status === "exported" ? "Verify export" : "Export locally"}</button>` : ""}
+      ${preparation?.status === "exported" ? `<button id="download-manifest" class="secondary">Download manifest</button><button id="download-artifact" class="secondary">Download artifact</button>` : ""}
+    </div>
+  </div>`;
+}
+
 function render(): void {
   app.innerHTML = `<main class="shell">
     <header class="topbar"><div><span class="eyebrow">VERIFIABLE DIGITAL-RIGHTS CASE GRAPH</span><h1>NEXO</h1></div><span class="status-dot">Local workspace</span></header>
@@ -98,7 +138,7 @@ function render(): void {
       <div class="column"><section class="panel"><div class="section-heading"><div><span class="eyebrow">CASE</span><h2>${state.caseId ? `Case ${state.caseId}` : "Start a case"}</h2></div><button id="new-case" class="secondary">New case</button></div><div id="case-feedback" class="feedback" aria-live="polite"></div>${renderTimeline()}</section>
       <section class="panel"><span class="eyebrow">EVIDENCE INTAKE</span><h2>Add what happened</h2><form id="evidence-form"><label>Filename <input id="filename" placeholder="message.txt" /></label><label>Plain-text evidence <textarea id="evidence-text" rows="7" placeholder="Paste the relevant evidence here"></textarea></label><button type="submit">Send to sandbox</button></form><p class="muted small">The API stores the original bytes and runs extraction in the sandbox. Rejections remain visible.</p></section></div>
       <div class="column"><section class="panel"><span class="eyebrow">OWNER ASSERTION</span><h2>Confirm a fact</h2><p class="muted">A confirmation is a user assertion, not an extracted observation.</p><button id="confirm-assertion" class="secondary">Record confirmed assertion</button></section>
-      <section class="panel"><div class="section-heading"><div><span class="eyebrow">EVALUATION</span><h2>Why is this shown?</h2></div><button id="evaluate">Evaluate case</button></div><div id="evaluation-output">${renderEvaluation()}</div></section></div>
+      <section class="panel"><div class="section-heading"><div><span class="eyebrow">EVALUATION</span><h2>Why is this shown?</h2></div><button id="evaluate">Evaluate case</button></div><div id="evaluation-output">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">PREPARATION / EXPORT</span><h3>Keep the proof portable</h3>${renderPreparation()}</div></section></div>
     </section><footer><span>NEXO stops at preparation. A human remains the actor for any external legal act.</span></footer>
   </main>`;
   bindEvents();
@@ -116,7 +156,9 @@ async function loadCase(): Promise<void> {
     request<EvaluationRecord[]>(`/v1/cases/${state.caseId}/evaluations`),
   ]);
   state.detail = detail;
+  state.evaluationId = evaluations[0]?.evaluation_id ?? null;
   state.evaluation = evaluations[0]?.result ?? null;
+  state.preparation = null;
   render();
 }
 
@@ -128,7 +170,7 @@ function bindEvents(): void {
     localStorage.setItem("nexo-api-base", state.apiBase); localStorage.setItem("nexo-token", state.token); feedback("Connection saved.");
   });
   document.querySelector<HTMLButtonElement>("#new-case")?.addEventListener("click", async () => {
-    try { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; render(); }
+    try { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; state.evaluationId = null; state.preparation = null; render(); }
     catch (error) { feedback(error instanceof Error ? error.message : "Could not create the case.", true); }
   });
   document.querySelector<HTMLFormElement>("#evidence-form")?.addEventListener("submit", async (event) => {
@@ -144,8 +186,38 @@ function bindEvents(): void {
   });
   document.querySelector<HTMLButtonElement>("#evaluate")?.addEventListener("click", async () => {
     if (!state.caseId) return feedback("Create a case first.", true);
-    try { const response = await request<{ result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluation = response.result; render(); }
+    try { const response = await request<{ evaluation_id: number; result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluationId = response.evaluation_id; state.evaluation = response.result; state.preparation = null; render(); }
     catch (error) { feedback(error instanceof Error ? error.message : "Evaluation failed.", true); }
+  });
+  document.querySelector<HTMLButtonElement>("#prepare")?.addEventListener("click", async () => {
+    if (!state.caseId || !state.evaluationId) return feedback("Run an available evaluation first.", true);
+    try {
+      state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations`, { method: "POST", body: JSON.stringify({ evaluation_id: state.evaluationId, kind: "draft_request" }) });
+      render();
+      feedback("Local preparation is ready; nothing was sent externally.");
+    } catch (error) { feedback(error instanceof Error ? error.message : "Preparation failed.", true); }
+  });
+  document.querySelector<HTMLButtonElement>("#export")?.addEventListener("click", async () => {
+    if (!state.caseId || !state.preparation) return;
+    try {
+      state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export`, { method: "POST" });
+      render();
+      feedback("Export verified and available for download; no external act was performed.");
+    } catch (error) { feedback(error instanceof Error ? error.message : "Export failed verification.", true); }
+  });
+  document.querySelector<HTMLButtonElement>("#download-manifest")?.addEventListener("click", async () => {
+    if (!state.caseId || !state.preparation) return;
+    try { downloadBlob(await requestBytes(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/manifest`), `nexo-preparation-${state.preparation.preparation_id}-manifest.json`); }
+    catch (error) { feedback(error instanceof Error ? error.message : "Manifest download failed.", true); }
+  });
+  document.querySelector<HTMLButtonElement>("#download-artifact")?.addEventListener("click", async () => {
+    if (!state.caseId || !state.preparation) return;
+    try {
+      const manifest = await request<{ artifacts: Array<{ digest: string }> }>(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/manifest`);
+      const digest = manifest.artifacts[0]?.digest;
+      if (!digest) throw new Error("Export has no downloadable artifact.");
+      downloadBlob(await requestBytes(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export/artifacts/${digest}`), `nexo-preparation-${state.preparation.preparation_id}-${digest}.bin`);
+    } catch (error) { feedback(error instanceof Error ? error.message : "Artifact download failed.", true); }
   });
 }
 

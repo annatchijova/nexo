@@ -610,6 +610,19 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     wrong_algorithm_tx.rollback().await.unwrap();
 
+    let mut malformed_digest_tx = pool.begin().await.unwrap();
+    let malformed_sha256 = repository::upsert_digest(
+        &mut malformed_digest_tx,
+        "sha256",
+        "not-a-sha256-digest",
+    )
+    .await;
+    assert!(
+        malformed_sha256.is_err(),
+        "sha256 digest rows must contain exactly 64 lowercase hex characters"
+    );
+    malformed_digest_tx.rollback().await.unwrap();
+
     let mut preparation_lifecycle_tx = pool.begin().await.unwrap();
     let preparation_id = repository::insert_preparation(
         &mut preparation_lifecycle_tx,

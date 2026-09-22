@@ -29,7 +29,11 @@ create table digests (
     id                  bigint generated always as identity primary key,
     algorithm           text not null,
     hex                 text not null,
-    unique (algorithm, hex)
+    unique (algorithm, hex),
+    check (
+        algorithm <> 'sha256'
+        or hex ~ '^[0-9a-f]{64}$'
+    )
 );
 
 create type acquisition_channel as enum (

@@ -198,6 +198,50 @@ create table inference_inputs (
     foreign key (case_id, input_node_id) references case_nodes (case_id, node_id)
 );
 
+create function case_node_payload_matches_kind()
+returns trigger as $$
+declare
+    actual_kind case_node_kind;
+    expected_kind case_node_kind;
+begin
+    select kind into actual_kind
+    from case_nodes
+    where case_id = new.case_id and node_id = new.node_id;
+
+    expected_kind := case tg_table_name
+        when 'artifact_nodes' then 'artifact'::case_node_kind
+        when 'observation_nodes' then 'observation'::case_node_kind
+        when 'user_assertion_nodes' then 'user_assertion'::case_node_kind
+        when 'derived_fact_nodes' then 'derived_fact'::case_node_kind
+        when 'inference_nodes' then 'inference'::case_node_kind
+        else null
+    end;
+
+    if actual_kind is distinct from expected_kind then
+        raise exception
+            'case node (% %, %) payload table does not match declared kind',
+            new.case_id, new.node_id, tg_table_name;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger artifact_nodes_match_case_node_kind_trigger
+    before insert or update on artifact_nodes
+    for each row execute function case_node_payload_matches_kind();
+create trigger observation_nodes_match_case_node_kind_trigger
+    before insert or update on observation_nodes
+    for each row execute function case_node_payload_matches_kind();
+create trigger user_assertion_nodes_match_case_node_kind_trigger
+    before insert or update on user_assertion_nodes
+    for each row execute function case_node_payload_matches_kind();
+create trigger derived_fact_nodes_match_case_node_kind_trigger
+    before insert or update on derived_fact_nodes
+    for each row execute function case_node_payload_matches_kind();
+create trigger inference_nodes_match_case_node_kind_trigger
+    before insert or update on inference_nodes
+    for each row execute function case_node_payload_matches_kind();
+
 -- ---------------------------------------------------------------------
 -- Policy: bundles, activations, normative sources and claims.
 -- Mirrors docs/POLICY_BUNDLE_CONTRACT.md field-for-field.

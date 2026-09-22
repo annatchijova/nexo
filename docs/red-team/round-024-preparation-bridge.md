@@ -302,6 +302,17 @@ writer could commit a claim before adding any source edge. The new deferred
 constraint triggers allow atomic claim construction while rejecting an empty
 claim at commit, including removal of the final source edge.
 
+### RT-024-29 — Case-node payload kind was not enforced by the database
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high case-graph integrity boundary
+
+The payload tables had composite foreign keys to `case_nodes`, but those keys
+did not compare the `kind` discriminator. A direct writer could attach an
+artifact payload to a user-assertion node, violating the graph's typed-node
+invariant. A shared trigger now checks every payload table against the declared
+kind, with a regression test for a cross-kind insert.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

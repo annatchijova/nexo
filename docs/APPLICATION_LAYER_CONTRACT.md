@@ -177,7 +177,8 @@ gives:
   discriminator and the id-allocation source of truth; every payload table's
   primary key is `(case_id, node_id)` and foreign-keys back into
   `case_nodes` so a node can never exist without exactly one typed payload
-  row of the matching kind.
+  row of the matching kind. Database triggers also reject a payload whose
+  table does not match the discriminator.
 - **`derived_fact_inputs`, `inference_inputs`** — ordered input edges
   (`ordinal`), `UNIQUE (case_id, node_id, ordinal)` so input order is
   reconstructible exactly as declared, and a `CHECK` bounding row count per

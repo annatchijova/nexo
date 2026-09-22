@@ -63,6 +63,49 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assert_eq!(a1.0, 1);
     assert_eq!(a2.0, 2);
     assert_eq!(a3.0, 3);
+
+    let mut mismatched_payload_tx = pool.begin().await.unwrap();
+    let digest = repository::upsert_digest(&mut mismatched_payload_tx, "sha256", &"aa".repeat(32))
+        .await
+        .unwrap();
+    let provenance = repository::insert_provenance(
+        &mut mismatched_payload_tx,
+        case,
+        "user_provided",
+        Some(actor),
+        Utc::now(),
+        json!({}),
+    )
+    .await
+    .unwrap();
+    let ingestion = repository::insert_ingestion_record(
+        &mut mismatched_payload_tx,
+        case,
+        Utc::now(),
+        Some("wrong-kind.bin"),
+        Some("application/octet-stream"),
+        1,
+        "accepted",
+    )
+    .await
+    .unwrap();
+    let mismatched_payload = sqlx::query(
+        "INSERT INTO artifact_nodes
+            (case_id, node_id, digest_id, size_bytes, ingestion_record_id, source_provenance_id)
+         VALUES ($1, $2, $3, 1, $4, $5)",
+    )
+    .bind(case.0)
+    .bind(a1.0)
+    .bind(digest.0)
+    .bind(ingestion.0)
+    .bind(provenance.0)
+    .execute(&mut *mismatched_payload_tx)
+    .await;
+    assert!(
+        mismatched_payload.is_err(),
+        "a payload table must match the case node discriminator"
+    );
+    mismatched_payload_tx.rollback().await.unwrap();
 }
 
 /// The core promise of the transaction contract's item 2: concurrent

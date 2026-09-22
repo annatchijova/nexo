@@ -238,6 +238,66 @@ create trigger inference_input_precedes_node_trigger
     before insert or update on inference_inputs
     for each row execute function inference_input_precedes_node();
 
+create function derived_fact_input_count_is_bounded()
+returns trigger as $$
+declare
+    input_count bigint;
+    case_id_to_check bigint;
+    node_id_to_check bigint;
+begin
+    case_id_to_check := coalesce(new.case_id, old.case_id);
+    node_id_to_check := coalesce(new.node_id, old.node_id);
+    select count(*) into input_count
+    from derived_fact_inputs
+    where case_id = case_id_to_check and node_id = node_id_to_check;
+    if input_count = 0 or input_count > 64 then
+        raise exception
+            'derived fact (% %, %) must have between 1 and 64 inputs',
+            case_id_to_check, node_id_to_check, input_count;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger derived_fact_node_input_count_trigger
+    after insert or update on derived_fact_nodes
+    deferrable initially deferred
+    for each row execute function derived_fact_input_count_is_bounded();
+create constraint trigger derived_fact_input_count_trigger
+    after insert or update or delete on derived_fact_inputs
+    deferrable initially deferred
+    for each row execute function derived_fact_input_count_is_bounded();
+
+create function inference_input_count_is_bounded()
+returns trigger as $$
+declare
+    input_count bigint;
+    case_id_to_check bigint;
+    node_id_to_check bigint;
+begin
+    case_id_to_check := coalesce(new.case_id, old.case_id);
+    node_id_to_check := coalesce(new.node_id, old.node_id);
+    select count(*) into input_count
+    from inference_inputs
+    where case_id = case_id_to_check and node_id = node_id_to_check;
+    if input_count = 0 or input_count > 64 then
+        raise exception
+            'inference (% %, %) must have between 1 and 64 inputs',
+            case_id_to_check, node_id_to_check, input_count;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger inference_node_input_count_trigger
+    after insert or update on inference_nodes
+    deferrable initially deferred
+    for each row execute function inference_input_count_is_bounded();
+create constraint trigger inference_input_count_trigger
+    after insert or update or delete on inference_inputs
+    deferrable initially deferred
+    for each row execute function inference_input_count_is_bounded();
+
 create function case_node_payload_matches_kind()
 returns trigger as $$
 declare

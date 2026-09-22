@@ -325,6 +325,17 @@ permit cycles through direct writes. Triggers now require a prior,
 non-inference input for derivations and prior-node inputs for inferences, with
 regression coverage for the forbidden derived-fact edge.
 
+### RT-024-31 — Graph fan-in bounds were application-only enforced
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium resource/integrity boundary
+
+The database allowed empty input sets and more than the core's 64-input bound
+when rows were written directly. That weakened the graph's non-empty-node
+invariant and left a small-input/large-retained-state path. Deferred constraint
+triggers now enforce one through 64 inputs for both derived facts and
+inferences while preserving atomic construction.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

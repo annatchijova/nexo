@@ -149,6 +149,46 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
         "derived facts must not consume inference nodes"
     );
     invalid_derived_input_tx.rollback().await.unwrap();
+
+    let mut oversized_derived_tx = pool.begin().await.unwrap();
+    let tool_version = repository::ensure_tool_version(
+        &mut oversized_derived_tx,
+        "graph-bound-test",
+        1,
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO case_nodes (case_id, node_id, kind)
+         VALUES ($1, 4, 'derived_fact')",
+    )
+    .bind(case.0)
+    .execute(&mut *oversized_derived_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO derived_fact_nodes (case_id, node_id, transformation_tool_version)
+         VALUES ($1, 4, $2)",
+    )
+    .bind(case.0)
+    .bind(tool_version.0)
+    .execute(&mut *oversized_derived_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO derived_fact_inputs (case_id, node_id, ordinal, input_node_id)
+         SELECT $1, 4, ordinal, 1
+         FROM generate_series(0, 64) AS ordinal",
+    )
+    .bind(case.0)
+    .execute(&mut *oversized_derived_tx)
+    .await
+    .unwrap();
+    let oversized_derived_commit = oversized_derived_tx.commit().await;
+    assert!(
+        oversized_derived_commit.is_err(),
+        "a derived fact must not commit more than 64 inputs"
+    );
 }
 
 /// The core promise of the transaction contract's item 2: concurrent

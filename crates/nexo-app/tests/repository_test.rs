@@ -584,6 +584,32 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     preparation_without_receipt_tx.rollback().await.unwrap();
 
+    let mut wrong_algorithm_tx = pool.begin().await.unwrap();
+    let wrong_algorithm_digest = repository::upsert_digest(
+        &mut wrong_algorithm_tx,
+        "md5",
+        "not-a-sha256-digest",
+    )
+    .await
+    .unwrap();
+    let wrong_algorithm_preparation = repository::insert_preparation(
+        &mut wrong_algorithm_tx,
+        evaluation,
+        route,
+        digest,
+        input_manifest_digest,
+        "test",
+        "draft_request",
+        wrong_algorithm_digest,
+        provenance,
+    )
+    .await;
+    assert!(
+        wrong_algorithm_preparation.is_err(),
+        "preparation output must use a sha256 digest"
+    );
+    wrong_algorithm_tx.rollback().await.unwrap();
+
     let mut preparation_lifecycle_tx = pool.begin().await.unwrap();
     let preparation_id = repository::insert_preparation(
         &mut preparation_lifecycle_tx,

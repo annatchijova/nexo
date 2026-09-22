@@ -748,6 +748,7 @@ declare
     receipt_bundle_id bigint;
     receipt_input_manifest_digest_id bigint;
     bundle_digest_id bigint;
+    output_digest_algorithm text;
 begin
     select case_id, result_kind, action_status
       into evaluation_case_id, kind, status
@@ -761,6 +762,9 @@ begin
     select digest_id into bundle_digest_id
     from policy_bundles
     where id = receipt_bundle_id;
+    select algorithm into output_digest_algorithm
+    from digests
+    where id = new.output_digest_id;
     if new.output_provenance_id is not null then
         select case_id into provenance_case_id
         from provenance_records
@@ -775,6 +779,7 @@ begin
            or new.action_route_id is distinct from receipt_route_id
            or new.policy_bundle_digest_id is distinct from bundle_digest_id
            or new.input_manifest_digest_id is distinct from receipt_input_manifest_digest_id
+           or output_digest_algorithm is distinct from 'sha256'
            or (new.output_provenance_id is not null
                and provenance_case_id is distinct from evaluation_case_id) then
             raise exception

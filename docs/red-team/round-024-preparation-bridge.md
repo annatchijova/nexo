@@ -234,3 +234,13 @@ before returning an existing row and rejects mismatches; the API test probes a
 different byte payload under the same identity.
 The comparison hashes bytes before writing them to object storage, so a
 rejected mismatch does not create an orphan object as a side effect.
+
+### RT-024-21 — Preparation output accepted a non-SHA-256 digest
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The foreign key on `output_digest_id` proved only that a digest row existed;
+it did not enforce the algorithm used by preparation output. A direct writer
+could bind an MD5 row to a preparation. The preparation trigger now requires
+the output digest algorithm to be `sha256`, and the repository probe rejects a
+non-SHA-256 insertion.

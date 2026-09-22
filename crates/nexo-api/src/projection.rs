@@ -87,6 +87,27 @@ pub async fn build_projection(
 ) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
     let nodes = repository::list_case_nodes_with_kind(pool, case).await?;
 
+    build_projection_from_nodes(nodes, fixture)
+}
+
+/// Builds a projection from a caller-owned transaction snapshot. The caller
+/// must lock the case row before reading so graph mutations cannot commit
+/// between this read and the decision persisted from it.
+pub async fn build_projection_in_tx(
+    tx: &mut repository::Tx<'_>,
+    case: CaseRowId,
+    fixture: &nexo_policy_ar::Fixture,
+) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
+    let nodes = repository::list_case_nodes_with_kind_tx(tx, case).await?;
+
+    build_projection_from_nodes(nodes, fixture)
+}
+
+fn build_projection_from_nodes(
+    nodes: Vec<repository::CaseNodeSummary>,
+    fixture: &nexo_policy_ar::Fixture,
+) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
+
     let mut resolver = NodeIdResolver::default();
     let mut factual_support = Vec::new();
     let mut identity_satisfied = false;

@@ -418,8 +418,16 @@ pub async fn evaluate_case(
     let case = CaseRowId(case_id);
     authorize_case(&state.pool, case, actor).await?;
 
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(internal("could not start evaluation transaction"))?;
+    repository::lock_case(&mut tx, case)
+        .await
+        .map_err(internal("could not lock case for evaluation"))?;
     let (projection, resolver, manifest) =
-        match projection::build_projection(&state.pool, case, &state.fixture).await {
+        match projection::build_projection_in_tx(&mut tx, case, &state.fixture).await {
             Ok(result) => result,
             Err(projection::ProjectionError::NoFactualSupportYet) => {
                 return Err((
@@ -464,11 +472,6 @@ pub async fn evaluate_case(
 
     let (result_kind, action_status, non_actionable_variant) = classify(&result);
 
-    let mut tx = state
-        .pool
-        .begin()
-        .await
-        .map_err(internal("could not start transaction"))?;
     let evaluation = repository::insert_action_evaluation(
         &mut tx,
         case,

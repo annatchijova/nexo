@@ -381,15 +381,41 @@ pub async fn list_case_nodes_with_kind(
     .bind(case.0)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
+    Ok(case_node_summaries(rows))
+}
+
+/// Reads the same graph view inside a caller-owned transaction. Callers that
+/// make a decision from the graph and persist that decision must lock the
+/// case row before invoking this function, keeping the read and write in one
+/// snapshot.
+pub async fn list_case_nodes_with_kind_tx(
+    tx: &mut Tx<'_>,
+    case: CaseRowId,
+) -> Result<Vec<CaseNodeSummary>, RepoError> {
+    let rows = sqlx::query(
+        "SELECT n.node_id, n.kind::text AS kind, n.created_at,
+                (u.confirmation = 'confirmed') AS confirmed
+         FROM case_nodes n
+         LEFT JOIN user_assertion_nodes u
+           ON u.case_id = n.case_id AND u.node_id = n.node_id
+         WHERE n.case_id = $1
+         ORDER BY n.node_id",
+    )
+    .bind(case.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(case_node_summaries(rows))
+}
+
+fn case_node_summaries(rows: Vec<sqlx::postgres::PgRow>) -> Vec<CaseNodeSummary> {
+    rows.into_iter()
         .map(|r| CaseNodeSummary {
             node_id: r.get("node_id"),
             kind: r.get("kind"),
             created_at: r.get("created_at"),
             confirmed: r.get("confirmed"),
         })
-        .collect())
+        .collect()
 }
 
 // ---------------------------------------------------------------------

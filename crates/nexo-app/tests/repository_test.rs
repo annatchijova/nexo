@@ -403,6 +403,32 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     mismatched_source_tx.rollback().await.unwrap();
 
+    let mut mismatched_bundle_tx = pool.begin().await.unwrap();
+    let other_digest = repository::upsert_digest(
+        &mut mismatched_bundle_tx,
+        "sha256",
+        &"55".repeat(32),
+    )
+    .await
+    .unwrap();
+    let mismatched_bundle = repository::insert_policy_bundle(
+        &mut mismatched_bundle_tx,
+        "AR",
+        1,
+        "ar-test-mismatched-digest",
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        None,
+        digest,
+        other_digest,
+        provenance,
+    )
+    .await;
+    assert!(
+        mismatched_bundle.is_err(),
+        "a policy bundle digest must match its captured artifact digest"
+    );
+    mismatched_bundle_tx.rollback().await.unwrap();
+
     let mut policy_preparation_tx = pool.begin().await.unwrap();
     let policy_preparation = repository::insert_preparation(
         &mut policy_preparation_tx,

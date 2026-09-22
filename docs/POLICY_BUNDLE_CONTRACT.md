@@ -44,6 +44,10 @@ digest before supplying the attestation. A caller that forges this status is
 already outside the stated trust boundary, but the API and documentation must
 keep that assumption visible.
 
+The persisted bundle row enforces the same relation: its digest must equal the
+captured-artifact digest, rather than merely referring to another existing
+digest row.
+
 `schema_version` answers “how is this bundle serialized?” and must not be
 confused with `policy_version`, which answers “which legal policy revision is
 this?” A newer unknown schema is rejected for evaluation, never silently read

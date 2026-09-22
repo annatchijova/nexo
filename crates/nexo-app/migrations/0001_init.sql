@@ -251,6 +251,22 @@ create table policy_bundles (
     check (validity_to is null or validity_to >= validity_from)
 );
 
+create function policy_bundle_digest_matches_capture()
+returns trigger as $$
+begin
+    if new.digest_id is distinct from new.captured_artifact_digest_id then
+        raise exception
+            'policy bundle % digest must match its captured artifact digest',
+            new.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger policy_bundle_digest_matches_capture_trigger
+    before insert or update on policy_bundles
+    for each row execute function policy_bundle_digest_matches_capture();
+
 create index policy_bundles_jurisdiction_idx on policy_bundles (jurisdiction);
 
 -- Append-only: a bundle is immutable once activated, and history is never

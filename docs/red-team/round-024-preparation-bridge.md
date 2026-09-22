@@ -267,6 +267,17 @@ artifact while its digest named another valid row. The new database trigger
 rejects that mismatch, and the repository regression test exercises the failed
 insert in an isolated transaction.
 
+### RT-024-25 — Policy bundle could bind a different capture digest
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+`policy_bundles` duplicated the captured-artifact and bundle digest references
+without enforcing the equality required by the bundle contract. A direct
+writer could bind a valid but unrelated digest to an otherwise valid bundle.
+The new trigger rejects that mismatch, with a repository regression test using
+an isolated failed insert.
+
 ### RT-024-23 — Other digest algorithms remained bindable outside preparation
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

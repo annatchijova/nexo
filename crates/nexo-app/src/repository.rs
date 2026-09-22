@@ -855,6 +855,29 @@ pub async fn preparation_status_for_case(
     Ok(row.map(|row| row.get("status")))
 }
 
+pub async fn preparation_export_manifest_digest_for_case(
+    pool: &Pool,
+    case: CaseRowId,
+    preparation: i64,
+) -> Result<Option<String>, RepoError> {
+    let row = sqlx::query(
+        "SELECT digest.hex AS export_manifest_digest_hex
+         FROM preparations preparation
+         JOIN action_evaluations evaluation
+           ON evaluation.id = preparation.action_evaluation_id
+         LEFT JOIN digests digest
+           ON digest.id = preparation.export_manifest_digest_id
+         WHERE preparation.id = $1
+           AND evaluation.case_id = $2
+           AND preparation.status = 'exported'::preparation_status",
+    )
+    .bind(preparation)
+    .bind(case.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(|row| row.get("export_manifest_digest_hex")))
+}
+
 #[derive(Debug)]
 pub struct PreparationExportBinding {
     pub id: i64,
@@ -862,6 +885,7 @@ pub struct PreparationExportBinding {
     pub status: String,
     pub output_digest_hex: String,
     pub policy_bundle_digest_hex: String,
+    pub export_manifest_digest_hex: Option<String>,
 }
 
 /// Locks the preparation and resolves every export input from durable joins.
@@ -877,7 +901,8 @@ pub async fn lock_preparation_for_export(
                 evaluation.case_id,
                 preparation.status::text AS status,
                 output_digest.hex AS output_digest_hex,
-                bundle_digest.hex AS policy_bundle_digest_hex
+                bundle_digest.hex AS policy_bundle_digest_hex,
+                export_manifest_digest.hex AS export_manifest_digest_hex
          FROM preparations preparation
          JOIN action_evaluations evaluation
            ON evaluation.id = preparation.action_evaluation_id
@@ -887,6 +912,8 @@ pub async fn lock_preparation_for_export(
            ON bundle.id = evaluation.policy_bundle_id
          JOIN digests bundle_digest
            ON bundle_digest.id = bundle.digest_id
+         LEFT JOIN digests export_manifest_digest
+           ON export_manifest_digest.id = preparation.export_manifest_digest_id
          WHERE preparation.id = $1
            AND evaluation.case_id = $2
          FOR UPDATE OF preparation",
@@ -901,20 +928,24 @@ pub async fn lock_preparation_for_export(
         status: row.get("status"),
         output_digest_hex: row.get("output_digest_hex"),
         policy_bundle_digest_hex: row.get("policy_bundle_digest_hex"),
+        export_manifest_digest_hex: row.get("export_manifest_digest_hex"),
     }))
 }
 
 pub async fn mark_preparation_exported(
     tx: &mut Tx<'_>,
     preparation: i64,
+    export_manifest_digest: DigestRowId,
 ) -> Result<bool, RepoError> {
     let row = sqlx::query(
         "UPDATE preparations
-         SET status = 'exported'::preparation_status
+         SET status = 'exported'::preparation_status,
+             export_manifest_digest_id = $2
          WHERE id = $1 AND status = 'prepared'::preparation_status
          RETURNING id",
     )
     .bind(preparation)
+    .bind(export_manifest_digest.0)
     .fetch_optional(&mut **tx)
     .await?;
     Ok(row.is_some())

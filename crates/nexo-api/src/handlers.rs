@@ -274,8 +274,19 @@ async fn verified_export_manifest(
         .join(format!("case-{case_id}"))
         .join(format!("preparation-{preparation_id}"));
     let manifest_path = export_dir.join("manifest.json");
-    nexo_verifier::verify_export(&manifest_path)
+    let report = nexo_verifier::verify_export(&manifest_path)
         .map_err(|_| (StatusCode::CONFLICT, "export failed independent verification"))?;
+    let expected_manifest = repository::preparation_export_manifest_digest_for_case(
+        &state.pool,
+        case,
+        preparation_id,
+    )
+    .await
+    .map_err(internal("could not read export identity"))?
+    .ok_or((StatusCode::CONFLICT, "export has no durable manifest identity"))?;
+    if report.manifest_digest.to_string() != expected_manifest {
+        return Err((StatusCode::CONFLICT, "export manifest identity mismatch"));
+    }
     let manifest = serde_json::from_slice(
         &fs::read(&manifest_path)
             .map_err(internal("could not read exported manifest"))?,

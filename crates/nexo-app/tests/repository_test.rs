@@ -1413,10 +1413,13 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .await
     .unwrap();
     sqlx::query(
-        "UPDATE preparations SET status = 'exported'::preparation_status
+        "UPDATE preparations
+         SET status = 'exported'::preparation_status,
+             export_manifest_digest_id = $2
          WHERE id = $1",
     )
     .bind(preparation_id)
+    .bind(result_digest.0)
     .execute(&mut *preparation_lifecycle_tx)
     .await
     .unwrap();

@@ -13,6 +13,7 @@ use axum::http::{Request, StatusCode};
 use chrono::{Datelike, Utc};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use std::fs;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -406,6 +407,25 @@ async fn full_flow_evidence_to_actionable_citation() {
     .await
     .unwrap();
     assert_eq!(repeated_export, exported);
+    let manifest_path = export_dir.join("manifest.json");
+    let original_manifest = fs::read(&manifest_path).unwrap();
+    fs::write(&manifest_path, b"{}").unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{http_preparation_id}/export"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    fs::write(&manifest_path, original_manifest).unwrap();
 
     let response = app
         .clone()

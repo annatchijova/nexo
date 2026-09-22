@@ -1401,10 +1401,15 @@ create table preparations (
     prepared_at                 timestamptz not null default now(),
     output_digest_id             bigint not null references digests (id),
     output_provenance_id          bigint not null references provenance_records (id),
+    export_manifest_digest_id    bigint references digests (id),
     invalidation_reason            text,
     check (
         status <> 'invalidated'::preparation_status
         or nullif(trim(invalidation_reason), '') is not null
+    ),
+    check (
+        status <> 'exported'::preparation_status
+        or export_manifest_digest_id is not null
     )
 );
 
@@ -1443,6 +1448,7 @@ declare
     receipt_input_manifest_digest_id bigint;
     bundle_digest_id bigint;
     output_digest_algorithm text;
+    export_manifest_digest_algorithm text;
 begin
     select case_id, result_kind, action_status
       into evaluation_case_id, kind, status
@@ -1459,6 +1465,9 @@ begin
     select algorithm into output_digest_algorithm
     from digests
     where id = new.output_digest_id;
+    select algorithm into export_manifest_digest_algorithm
+    from digests
+    where id = new.export_manifest_digest_id;
     if new.output_provenance_id is not null then
         select case_id into provenance_case_id
         from provenance_records
@@ -1474,6 +1483,9 @@ begin
            or new.policy_bundle_digest_id is distinct from bundle_digest_id
            or new.input_manifest_digest_id is distinct from receipt_input_manifest_digest_id
            or output_digest_algorithm is distinct from 'sha256'
+           or (new.status = 'exported'::preparation_status
+               and (new.export_manifest_digest_id is null
+                    or export_manifest_digest_algorithm is distinct from 'sha256'))
            or (new.output_provenance_id is not null
                and provenance_case_id is distinct from evaluation_case_id) then
             raise exception
@@ -1507,6 +1519,11 @@ begin
        or new.output_digest_id is distinct from old.output_digest_id
        or new.output_provenance_id is distinct from old.output_provenance_id then
         raise exception 'preparation % identity is immutable', old.id;
+    end if;
+
+    if old.export_manifest_digest_id is not null
+       and new.export_manifest_digest_id is distinct from old.export_manifest_digest_id then
+        raise exception 'preparation % export manifest identity is immutable', old.id;
     end if;
 
     if old.status = 'exported'::preparation_status

@@ -30,6 +30,7 @@ pub enum PreparationVerificationError {
     InvalidExportIdentity,
     Export(export::ExportError),
     ExistingExportInvalid(nexo_verifier::VerifyError),
+    ExportManifestMismatch,
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -368,6 +369,14 @@ pub async fn export_preparation(
     if binding.status == "exported" {
         let report = nexo_verifier::verify_export(destination.join("manifest.json"))
             .map_err(PreparationVerificationError::ExistingExportInvalid)?;
+        let expected_manifest = binding
+            .export_manifest_digest_hex
+            .as_deref()
+            .and_then(|digest| Sha256Digest::from_hex(digest).ok())
+            .ok_or(PreparationVerificationError::InvalidExportIdentity)?;
+        if report.manifest_digest != expected_manifest {
+            return Err(PreparationVerificationError::ExportManifestMismatch);
+        }
         return Ok(ExportResult {
             directory: destination.to_path_buf(),
             manifest_digest: report.manifest_digest,
@@ -395,7 +404,13 @@ pub async fn export_preparation(
             bytes: &bytes,
         }],
     )?;
-    if !repository::mark_preparation_exported(&mut tx, binding.id).await? {
+    let manifest_digest = repository::upsert_digest(
+        &mut tx,
+        "sha256",
+        &result.manifest_digest.to_string(),
+    )
+    .await?;
+    if !repository::mark_preparation_exported(&mut tx, binding.id, manifest_digest).await? {
         return Err(PreparationVerificationError::PreparationNotPrepared);
     }
     tx.commit().await.map_err(repository::RepoError::from)?;

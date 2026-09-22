@@ -36,6 +36,17 @@ create table digests (
     )
 );
 
+create function digest_rows_are_immutable()
+returns trigger as $$
+begin
+    raise exception 'digest rows are immutable';
+end;
+$$ language plpgsql;
+
+create trigger digest_rows_are_immutable_trigger
+    before update on digests
+    for each row execute function digest_rows_are_immutable();
+
 create type acquisition_channel as enum (
     'web_fetch',
     'official_api',

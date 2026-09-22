@@ -334,6 +334,16 @@ rewrite or delete the event history even while leaving the hash-chain fields
 syntactically present. The new trigger rejects both operations, with a
 regression test covering update and delete.
 
+### RT-024-34 — Persisted digest identity was mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high integrity boundary
+
+The digest table validated new values but allowed an existing row's hex to be
+updated. Every artifact, policy, receipt, or preparation referring to that row
+would then silently name different bytes. Digest rows are now immutable after
+insertion, with a direct update regression test.
+
 ### RT-024-30 — Derived facts could consume interpretations
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

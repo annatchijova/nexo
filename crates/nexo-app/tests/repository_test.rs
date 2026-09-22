@@ -113,6 +113,27 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     );
     kind_update_tx.rollback().await.unwrap();
 
+    let mut digest_insert_tx = pool.begin().await.unwrap();
+    let immutable_digest = repository::upsert_digest(
+        &mut digest_insert_tx,
+        "sha256",
+        &"bb".repeat(32),
+    )
+    .await
+    .unwrap();
+    digest_insert_tx.commit().await.unwrap();
+
+    let mut digest_update_tx = pool.begin().await.unwrap();
+    let digest_update = sqlx::query(
+        "UPDATE digests SET hex = $1 WHERE id = $2",
+    )
+    .bind("cc".repeat(32))
+    .bind(immutable_digest.0)
+    .execute(&mut *digest_update_tx)
+    .await;
+    assert!(digest_update.is_err(), "digest identities must be immutable");
+    digest_update_tx.rollback().await.unwrap();
+
     let mut mismatched_payload_tx = pool.begin().await.unwrap();
     let digest = repository::upsert_digest(&mut mismatched_payload_tx, "sha256", &"aa".repeat(32))
         .await

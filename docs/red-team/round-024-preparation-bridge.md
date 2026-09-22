@@ -232,3 +232,5 @@ the complete retry key. Supplying different bytes for that key returned the
 old row without comparing content. The helper now compares the content digest
 before returning an existing row and rejects mismatches; the API test probes a
 different byte payload under the same identity.
+The comparison hashes bytes before writing them to object storage, so a
+rejected mismatch does not create an orphan object as a side effect.

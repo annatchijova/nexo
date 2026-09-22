@@ -1,6 +1,6 @@
 //! Application-owned bridge from durable receipt evidence to the core
-//! preparation capability. This module intentionally does not expose an HTTP
-//! preparation endpoint yet; it proves the authority boundary first.
+//! preparation capability. It proves the authority boundary before material
+//! generation and persistence.
 
 use std::num::NonZeroU64;
 use std::collections::BTreeMap;
@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use nexo_app::object_store::{FilesystemObjectStore, ObjectStoreError};
 use nexo_app::repository::{self, ActionEvaluationRowId, CaseRowId, Pool, ProvenanceRowId};
 use nexo_core::{ActionOption, NodeId, VerifiedPreparationSnapshot};
-use nexo_integrity::{seal, CanonicalValue};
+use nexo_integrity::{hash_bytes, seal, CanonicalValue};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -200,7 +200,7 @@ pub async fn persist_prepared_material(
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
     }
-    let output_digest = store.put(bytes)?;
+    let output_digest = hash_bytes(bytes);
     if let Some((existing, existing_digest)) = repository::find_active_preparation(
         &mut tx,
         evaluation,
@@ -214,6 +214,7 @@ pub async fn persist_prepared_material(
         }
         return Ok(existing);
     }
+    let output_digest = store.put(bytes)?;
     let output_digest = repository::upsert_digest(&mut tx, "sha256", &output_digest.to_string())
         .await?;
     let preparation = repository::insert_preparation(
@@ -282,7 +283,7 @@ pub async fn persist_prepared_material_with_provenance(
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
     }
-    let output_digest = store.put(bytes)?;
+    let output_digest = hash_bytes(bytes);
     if let Some((existing, existing_digest)) = repository::find_active_preparation(
         &mut tx,
         evaluation,
@@ -309,6 +310,7 @@ pub async fn persist_prepared_material_with_provenance(
         }),
     )
     .await?;
+    let output_digest = store.put(bytes)?;
     let output_digest = repository::upsert_digest(&mut tx, "sha256", &output_digest.to_string())
         .await?;
     let preparation = repository::insert_preparation(

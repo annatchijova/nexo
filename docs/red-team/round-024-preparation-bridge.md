@@ -292,6 +292,16 @@ therefore alter the mandatory facts of an already-evaluated route. The new
 trigger rejects insertion, update, and deletion of requirement rows once the
 containing bundle is activated, with regression coverage for all three paths.
 
+### RT-024-28 — Empty normative claims were application-only enforced
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+The schema documented that every claim needs at least one source, but a direct
+writer could commit a claim before adding any source edge. The new deferred
+constraint triggers allow atomic claim construction while rejecting an empty
+claim at commit, including removal of the final source edge.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

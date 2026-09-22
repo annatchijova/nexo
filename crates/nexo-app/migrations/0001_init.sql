@@ -376,8 +376,9 @@ create index normative_claims_bundle_idx on normative_claims (policy_bundle_id);
 
 create type support_role as enum ('primary', 'corroborating');
 
--- A claim requires at least one source row; enforced at the application
--- layer at claim-insert time (a bare foreign key cannot express "non-empty").
+-- A claim requires at least one source row. The deferred constraint triggers
+-- below allow the claim and its source edges to be assembled in one
+-- transaction, but reject a commit that leaves the claim unsupported.
 create table normative_claim_sources (
     claim_id            bigint not null references normative_claims (id),
     source_id           bigint not null references normative_sources (id),
@@ -385,6 +386,58 @@ create table normative_claim_sources (
     ordinal             integer not null check (ordinal >= 0),
     primary key (claim_id, source_id)
 );
+
+create function normative_claim_requires_source()
+returns trigger as $$
+begin
+    if not exists (
+        select 1
+        from normative_claim_sources
+        where claim_id = new.id
+    ) then
+        raise exception 'normative claim % requires at least one source', new.id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger normative_claim_requires_source_trigger
+    after insert or update on normative_claims
+    deferrable initially deferred
+    for each row execute function normative_claim_requires_source();
+
+create function normative_claim_source_edge_requires_claim_source()
+returns trigger as $$
+declare
+    claim_id_to_check bigint;
+begin
+    claim_id_to_check := old.claim_id;
+    if not exists (
+        select 1
+        from normative_claim_sources
+        where claim_id = claim_id_to_check
+    ) then
+        raise exception
+            'normative claim % requires at least one source',
+            claim_id_to_check;
+    end if;
+
+    if tg_op = 'UPDATE' and new.claim_id is distinct from old.claim_id
+       and not exists (
+           select 1
+           from normative_claim_sources
+           where claim_id = new.claim_id
+       ) then
+        raise exception 'normative claim % requires at least one source', new.claim_id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger normative_claim_source_edge_requires_claim_source_trigger
+    after update or delete on normative_claim_sources
+    deferrable initially deferred
+    for each row execute function normative_claim_source_edge_requires_claim_source();
 
 create function activated_claim_source_edge_is_immutable()
 returns trigger as $$

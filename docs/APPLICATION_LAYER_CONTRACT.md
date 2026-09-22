@@ -190,9 +190,9 @@ gives:
   each bundle also has at most one activation event.
 - **`normative_sources`, `normative_claims`, `normative_claim_sources`** —
   mirrors `docs/POLICY_BUNDLE_CONTRACT.md`'s bundle identity fields exactly;
-  `normative_claim_sources` requires at least one row per claim, enforced at
-  the application layer at claim-insert time (a bare foreign key cannot
-  express "non-empty").
+  `normative_claim_sources` requires at least one row per claim through a
+  deferred database constraint, so a claim and its source edge may still be
+  assembled atomically.
 - **`action_routes`** — the durable form of `ActionRoute`: which claims and
   mandatory requirements a route requires. Once its bundle is activated, the
   database also freezes its requirement rows.

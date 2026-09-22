@@ -385,6 +385,22 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .unwrap();
     tx.commit().await.unwrap();
 
+    let mut empty_claim_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO normative_claims
+            (policy_bundle_id, proposition, jurisdiction, validity_from)
+         VALUES ($1, 'claim without source', 'AR', DATE '2026-01-01')",
+    )
+    .bind(bundle_two.0)
+    .execute(&mut *empty_claim_tx)
+    .await
+    .unwrap();
+    let empty_claim_commit = empty_claim_tx.commit().await;
+    assert!(
+        empty_claim_commit.is_err(),
+        "a normative claim without a source must not commit"
+    );
+
     let mut mismatched_source_tx = pool.begin().await.unwrap();
     let other_digest = repository::upsert_digest(
         &mut mismatched_source_tx,

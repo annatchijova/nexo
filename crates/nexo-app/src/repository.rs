@@ -85,23 +85,38 @@ pub async fn apply_migration(pool: &Pool) -> Result<(), RepoError> {
 // Actors and cases
 // ---------------------------------------------------------------------
 
-pub async fn create_actor(pool: &Pool, external_identity: &str) -> Result<ActorRowId, RepoError> {
+pub async fn create_actor(pool: &Pool, credential: &str) -> Result<ActorRowId, RepoError> {
+    let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
+    let mut tx = pool.begin().await?;
     let row = sqlx::query("INSERT INTO actors (external_identity) VALUES ($1) RETURNING id")
-        .bind(external_identity)
-        .fetch_one(pool)
+        .bind(format!("actor:{digest}"))
+        .fetch_one(&mut *tx)
         .await?;
-    Ok(ActorRowId(row.try_get("id")?))
+    let actor_id: i64 = row.try_get("id")?;
+    sqlx::query(
+        "INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)",
+    )
+    .bind(actor_id)
+    .bind(digest)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(ActorRowId(actor_id))
 }
 
 pub async fn find_actor_by_identity(
     pool: &Pool,
-    external_identity: &str,
+    credential: &str,
 ) -> Result<Option<ActorRowId>, RepoError> {
-    let row = sqlx::query("SELECT id FROM actors WHERE external_identity = $1")
-        .bind(external_identity)
+    let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
+    let row = sqlx::query(
+        "SELECT actor_id FROM actor_credentials
+         WHERE credential_digest = $1 AND revoked_at IS NULL",
+    )
+        .bind(digest)
         .fetch_optional(pool)
         .await?;
-    Ok(row.map(|r| ActorRowId(r.get("id"))))
+    Ok(row.map(|r| ActorRowId(r.get("actor_id"))))
 }
 
 pub async fn create_case(pool: &Pool, owner: ActorRowId) -> Result<CaseRowId, RepoError> {

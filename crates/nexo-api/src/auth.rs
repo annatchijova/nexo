@@ -1,18 +1,14 @@
-//! Authentication: a bearer token that *is* the actor's `external_identity`.
+//! Authentication: a bearer token resolved through a digest-backed credential
+//! row belonging to an actor.
 //!
 //! This is a real, structured mechanism, not a hardcoded bypass — every
 //! actor is a row with an ownership model already enforced by
 //! `docs/APPLICATION_LAYER_CONTRACT.md`'s repository layer, so adding a
 //! second actor later is "create another row," not a schema rewrite.
-//! Swapping the token scheme itself (hashed API keys, OAuth, session
-//! cookies) later only touches this file: every handler downstream only
-//! ever sees an already-authenticated `ActorRowId`, never a raw credential.
-//!
-//! Known limitation, recorded rather than hidden: the token is compared to
-//! the stored `external_identity` in plaintext (constant-time compare, but
-//! not hashed at rest) — acceptable for the single-owner personal
-//! deployment this round targets, not yet a credential system to expose to
-//! untrusted multi-tenant traffic. See docs/API_CONTRACT.md.
+//! Every handler downstream only sees an already-authenticated `ActorRowId`,
+//! never a raw credential or its digest. Credential rows can overlap during
+//! rotation and be revoked independently; account-management endpoints remain
+//! outside this slice.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;

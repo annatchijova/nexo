@@ -28,6 +28,37 @@ create trigger actor_external_identity_is_immutable_trigger
     before update on actors
     for each row execute function actor_external_identity_is_immutable();
 
+-- Bearer credentials are separate from the actor's stable identity and are
+-- stored only as digests. Multiple live rows permit rotation with overlap;
+-- revoking one credential does not require changing the actor or its cases.
+create table actor_credentials (
+    id                  bigint generated always as identity primary key,
+    actor_id            bigint not null references actors (id),
+    credential_digest   text not null unique,
+    issued_at           timestamptz not null default now(),
+    revoked_at          timestamptz,
+    check (credential_digest ~ '^[0-9a-f]{64}$'),
+    check (revoked_at is null or revoked_at >= issued_at)
+);
+
+create index actor_credentials_actor_id_idx on actor_credentials (actor_id);
+
+create function actor_credential_identity_is_immutable()
+returns trigger as $$
+begin
+    if new.actor_id is distinct from old.actor_id
+       or new.credential_digest is distinct from old.credential_digest
+       or new.issued_at is distinct from old.issued_at then
+        raise exception 'actor credential identity is immutable';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger actor_credential_identity_is_immutable_trigger
+    before update on actor_credentials
+    for each row execute function actor_credential_identity_is_immutable();
+
 create table cases (
     id                  bigint generated always as identity primary key,
     owner_actor_id      bigint not null references actors (id),

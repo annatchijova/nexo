@@ -16,8 +16,9 @@ second bundle exists to design against.
 
 ## Authentication
 
-A bearer token that *is* the actor's `external_identity`:
-`Authorization: Bearer <token>`. Real, not a hardcoded bypass — every
+A bearer token is resolved through an actor credential row:
+`Authorization: Bearer <token>`. Only the SHA-256 digest is stored; the raw
+token is never persisted or logged. This is real, not a hardcoded bypass — every
 actor is a durable row with an ownership model already enforced by
 `docs/APPLICATION_LAYER_CONTRACT.md`. Adding a second person is "create
 another actor row," not a schema or auth-model rewrite; swapping the token
@@ -25,12 +26,11 @@ scheme (hashed API keys, OAuth, session cookies) later only touches
 `src/auth.rs` — every handler downstream only ever sees an already
 authenticated `ActorRowId`.
 
-**Known limitation, not hidden:** the token is compared to the stored
-`external_identity` directly (not a separately hashed credential) —
-acceptable for the single-owner personal deployment this round targets,
-not yet a credential system to expose to untrusted multi-tenant traffic.
-Revisit before Step 9 (personal deployment) if the deployment is ever
-reachable by more than the owner.
+Credential rows support overlapping live credentials and explicit revocation,
+but credential issuance and revocation are not yet exposed as an account
+management API. Before Step 9, provide an operational rotation procedure and
+use high-entropy credentials; this is not a password-hashing scheme for
+low-entropy secrets.
 
 Every case-scoped endpoint calls `auth::authorize_case`, which loads the
 case's owner and compares it to the authenticated actor — a mismatch and a

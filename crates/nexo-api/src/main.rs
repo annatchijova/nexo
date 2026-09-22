@@ -17,15 +17,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("NEXO_EXPORT_ROOT").unwrap_or_else(|_| "./data/exports".to_string()),
     );
     let bind_addr = std::env::var("NEXO_BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
-    let bootstrap_owner_identity = std::env::var("NEXO_BOOTSTRAP_OWNER")
-        .expect("NEXO_BOOTSTRAP_OWNER must be set to the single owner's bearer token/identity");
+    let bootstrap_owner_credential = std::env::var("NEXO_BOOTSTRAP_OWNER")
+        .expect("NEXO_BOOTSTRAP_OWNER must be set to the single owner's bearer token");
 
     let pool = repository::connect(&database_url).await?;
     repository::apply_migration(&pool).await?;
 
-    let owner = match repository::find_actor_by_identity(&pool, &bootstrap_owner_identity).await? {
+    let owner = match repository::find_actor_by_identity(&pool, &bootstrap_owner_credential).await? {
         Some(actor) => actor,
-        None => repository::create_actor(&pool, &bootstrap_owner_identity).await?,
+        None => repository::create_actor(&pool, &bootstrap_owner_credential).await?,
     };
     tracing::info!(actor_id = owner.0, "bootstrap owner ready");
 

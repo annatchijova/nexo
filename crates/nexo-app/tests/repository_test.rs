@@ -1298,6 +1298,22 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     preparation_without_receipt_tx.rollback().await.unwrap();
 
+    let mut evaluation_delete_tx = pool.begin().await.unwrap();
+    sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
+        .bind(evaluation.0)
+        .execute(&mut *evaluation_delete_tx)
+        .await
+        .unwrap();
+    let evaluation_delete = sqlx::query("DELETE FROM action_evaluations WHERE id = $1")
+        .bind(evaluation.0)
+        .execute(&mut *evaluation_delete_tx)
+        .await;
+    assert!(
+        evaluation_delete.is_err(),
+        "evaluation history must remain append-only after receipt invalidation"
+    );
+    evaluation_delete_tx.rollback().await.unwrap();
+
     let mut wrong_algorithm_tx = pool.begin().await.unwrap();
     let wrong_algorithm_digest = repository::upsert_digest(
         &mut wrong_algorithm_tx,

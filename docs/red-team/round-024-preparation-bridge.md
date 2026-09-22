@@ -576,3 +576,15 @@ that value, so a caller could reorder policy history without changing any
 bundle row. A `BEFORE INSERT` trigger now replaces caller input with the
 database transaction timestamp, with regression coverage for an explicitly
 backdated activation.
+
+### RT-024-52 — Evaluation history could be deleted after receipt removal
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high audit/evidence boundary
+
+Receipt deletion intentionally invalidates dependent preparations, but the
+underlying evaluation is a sealed historical decision and must remain
+available for audit. Once the receipt was deleted, a direct writer could also
+delete the evaluation because no append-only guard covered that table. The
+database now rejects evaluation deletes while preserving receipt invalidation,
+with regression coverage for the two-step delete attempt.

@@ -1348,6 +1348,17 @@ create trigger receipted_action_evaluations_are_immutable_trigger
     before update on action_evaluations
     for each row execute function receipted_action_evaluations_are_immutable();
 
+create function action_evaluations_are_append_only()
+returns trigger as $$
+begin
+    raise exception 'action evaluations are append-only';
+end;
+$$ language plpgsql;
+
+create trigger action_evaluations_are_append_only_trigger
+    before delete on action_evaluations
+    for each row execute function action_evaluations_are_append_only();
+
 create function invalidate_preparations_on_receipt_delete()
 returns trigger as $$
 begin

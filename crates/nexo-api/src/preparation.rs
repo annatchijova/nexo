@@ -5,10 +5,12 @@
 use std::num::NonZeroU64;
 use std::collections::BTreeMap;
 
+use chrono::Utc;
+use nexo_app::export::{self, ExportArtifact, ExportResult};
 use nexo_app::object_store::{FilesystemObjectStore, ObjectStoreError};
 use nexo_app::repository::{self, ActionEvaluationRowId, CaseRowId, Pool, ProvenanceRowId};
 use nexo_core::{ActionOption, NodeId, VerifiedPreparationSnapshot};
-use nexo_integrity::{hash_bytes, seal, CanonicalValue};
+use nexo_integrity::{hash_bytes, seal, CanonicalValue, Sha256Digest};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -23,6 +25,10 @@ pub enum PreparationVerificationError {
     InputManifestChanged,
     PolicyBundleChanged,
     PreparationOutputMismatch,
+    PreparationNotFound,
+    PreparationNotPrepared,
+    InvalidExportIdentity,
+    Export(export::ExportError),
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -93,6 +99,12 @@ impl From<repository::RepoError> for PreparationVerificationError {
 impl From<ObjectStoreError> for PreparationVerificationError {
     fn from(value: ObjectStoreError) -> Self {
         Self::ObjectStore(value)
+    }
+}
+
+impl From<export::ExportError> for PreparationVerificationError {
+    fn from(value: export::ExportError) -> Self {
+        Self::Export(value)
     }
 }
 
@@ -329,4 +341,52 @@ pub async fn persist_prepared_material_with_provenance(
         .await
         .map_err(repository::RepoError::from)?;
     Ok(preparation)
+}
+
+/// Materializes an authorized preparation as a standalone verifiable export
+/// and advances its lifecycle only after the bytes have been written. The
+/// preparation row stays locked for the whole operation, so invalidation or
+/// a concurrent export cannot pass between the durable check and the state
+/// transition.
+pub async fn export_preparation(
+    pool: &Pool,
+    store: &FilesystemObjectStore,
+    actor: repository::ActorRowId,
+    case: CaseRowId,
+    preparation: i64,
+    destination: impl AsRef<std::path::Path>,
+) -> Result<ExportResult, PreparationVerificationError> {
+    if repository::case_owner(pool, case).await? != Some(actor) {
+        return Err(PreparationVerificationError::CaseNotOwned);
+    }
+    let mut tx = pool.begin().await.map_err(repository::RepoError::from)?;
+    let binding = repository::lock_preparation_for_export(&mut tx, case, preparation)
+        .await?
+        .ok_or(PreparationVerificationError::PreparationNotFound)?;
+    if binding.status != "prepared" {
+        return Err(PreparationVerificationError::PreparationNotPrepared);
+    }
+    let case_reference = u64::try_from(binding.case_id)
+        .map_err(|_| PreparationVerificationError::InvalidExportIdentity)?;
+    let output_digest = Sha256Digest::from_hex(&binding.output_digest_hex)
+        .map_err(|_| PreparationVerificationError::InvalidExportIdentity)?;
+    let policy_bundle_digest = Sha256Digest::from_hex(&binding.policy_bundle_digest_hex)
+        .map_err(|_| PreparationVerificationError::InvalidExportIdentity)?;
+    let bytes = store.get(output_digest)?;
+    let label = format!("preparation/{}", binding.id);
+    let result = export::write_export(
+        destination,
+        case_reference,
+        Utc::now().timestamp(),
+        policy_bundle_digest,
+        &[ExportArtifact {
+            label: &label,
+            bytes: &bytes,
+        }],
+    )?;
+    if !repository::mark_preparation_exported(&mut tx, binding.id).await? {
+        return Err(PreparationVerificationError::PreparationNotPrepared);
+    }
+    tx.commit().await.map_err(repository::RepoError::from)?;
+    Ok(result)
 }

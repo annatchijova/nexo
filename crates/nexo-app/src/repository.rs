@@ -243,9 +243,9 @@ pub async fn ensure_tool_version(
 async fn lock_case_and_next_node_id(tx: &mut Tx<'_>, case: CaseRowId) -> Result<i64, RepoError> {
     lock_case(tx, case).await?;
     let row = sqlx::query("SELECT COALESCE(MAX(node_id), 0) + 1 AS next FROM case_nodes WHERE case_id = $1")
-        .bind(case.0)
-        .fetch_one(&mut **tx)
-        .await?;
+    .bind(case.0)
+    .fetch_one(&mut **tx)
+    .await?;
     Ok(row.try_get("next")?)
 }
 
@@ -834,6 +834,71 @@ pub async fn preparation_status(pool: &Pool, preparation: i64) -> Result<Option<
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|row| row.get("status")))
+}
+
+#[derive(Debug)]
+pub struct PreparationExportBinding {
+    pub id: i64,
+    pub case_id: i64,
+    pub status: String,
+    pub output_digest_hex: String,
+    pub policy_bundle_digest_hex: String,
+}
+
+/// Locks the preparation and resolves every export input from durable joins.
+/// Callers must keep the transaction open until the export side effect and
+/// `mark_preparation_exported` have both completed.
+pub async fn lock_preparation_for_export(
+    tx: &mut Tx<'_>,
+    case: CaseRowId,
+    preparation: i64,
+) -> Result<Option<PreparationExportBinding>, RepoError> {
+    let row = sqlx::query(
+        "SELECT preparation.id,
+                evaluation.case_id,
+                preparation.status::text AS status,
+                output_digest.hex AS output_digest_hex,
+                bundle_digest.hex AS policy_bundle_digest_hex
+         FROM preparations preparation
+         JOIN action_evaluations evaluation
+           ON evaluation.id = preparation.action_evaluation_id
+         JOIN digests output_digest
+           ON output_digest.id = preparation.output_digest_id
+         JOIN policy_bundles bundle
+           ON bundle.id = evaluation.policy_bundle_id
+         JOIN digests bundle_digest
+           ON bundle_digest.id = bundle.digest_id
+         WHERE preparation.id = $1
+           AND evaluation.case_id = $2
+         FOR UPDATE OF preparation",
+    )
+    .bind(preparation)
+    .bind(case.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.map(|row| PreparationExportBinding {
+        id: row.get("id"),
+        case_id: row.get("case_id"),
+        status: row.get("status"),
+        output_digest_hex: row.get("output_digest_hex"),
+        policy_bundle_digest_hex: row.get("policy_bundle_digest_hex"),
+    }))
+}
+
+pub async fn mark_preparation_exported(
+    tx: &mut Tx<'_>,
+    preparation: i64,
+) -> Result<bool, RepoError> {
+    let row = sqlx::query(
+        "UPDATE preparations
+         SET status = 'exported'::preparation_status
+         WHERE id = $1 AND status = 'prepared'::preparation_status
+         RETURNING id",
+    )
+    .bind(preparation)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.is_some())
 }
 
 #[allow(clippy::too_many_arguments)]

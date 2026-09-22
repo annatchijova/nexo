@@ -166,7 +166,8 @@ equality afterward — never by reading a value out of the id.
 
 ## Non-goals (this round)
 
-- Preparation/export endpoints (`docs/ARCHITECTURE.md`'s "Preparation
-  boundary" — `Preparation` repository functions do not exist yet either).
+- Public export endpoints remain deferred. The application layer now has an
+  internal, owner-checked export bridge; it is not exposed until destination
+  policy, download semantics, and lifecycle integration are specified.
 - A generic multi-bundle import/selection surface.
 - The web UI (Step 6) and independent verifier (Step 8).

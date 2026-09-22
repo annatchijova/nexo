@@ -53,8 +53,9 @@ Accepted now: the application can mint a verified core snapshot only after
 the durable receipt and ownership checks pass. Step 7 remains partially
 deferred; no preparation demo endpoint exists yet.
 
-Deferred: receipt persistence, canonical manifest construction, capability
-minting, output-artifact generation, and preparation API/UI flows.
+Deferred: public preparation/export API and UI flows, destination policy, and
+download semantics. The application now has canonical manifest construction,
+output-artifact generation, and an owner-checked internal export bridge.
 
 ## Revisit trigger
 

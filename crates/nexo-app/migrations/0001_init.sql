@@ -561,6 +561,29 @@ create table action_route_requirements (
     unique (route_id, ordinal)
 );
 
+create function activated_action_route_requirements_are_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from policy_bundle_activations activation
+        join action_routes route
+          on route.policy_bundle_id = activation.policy_bundle_id
+        where route.id = coalesce(old.route_id, new.route_id)
+    ) then
+        raise exception
+            'requirements of route % in an activated policy bundle are immutable',
+            coalesce(old.route_id, new.route_id);
+    end if;
+
+    return coalesce(new, old);
+end;
+$$ language plpgsql;
+
+create trigger activated_action_route_requirements_are_immutable_trigger
+    before insert or update or delete on action_route_requirements
+    for each row execute function activated_action_route_requirements_are_immutable();
+
 create type evaluation_result_kind as enum ('actionable', 'non_actionable');
 
 create type action_status as enum ('supported', 'conditionally_supported');

@@ -281,6 +281,17 @@ and delete, with regression coverage for each operation.
 The table also now enforces one activation event per bundle, so a direct replay
 cannot create duplicate history for the same immutable policy identity.
 
+### RT-024-27 — Activated route requirements remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+The route header, claims, and claim edges were immutable after activation, but
+`action_route_requirements` had no equivalent trigger. A direct writer could
+therefore alter the mandatory facts of an already-evaluated route. The new
+trigger rejects insertion, update, and deletion of requirement rows once the
+containing bundle is activated, with regression coverage for all three paths.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

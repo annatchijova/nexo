@@ -295,6 +295,14 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let route = repository::insert_action_route(&mut tx, bundle, "AR", "test route", &[claim])
         .await
         .unwrap();
+    sqlx::query(
+        "INSERT INTO action_route_requirements (route_id, description, ordinal)
+         VALUES ($1, 'identity proof', 0)",
+    )
+    .bind(route.0)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     repository::activate_policy_bundle(&mut tx, bundle, actor)
         .await
         .unwrap();
@@ -639,6 +647,48 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "claims of an activated route must not be removable"
     );
     activated_route_claim_delete_tx.rollback().await.unwrap();
+
+    let mut activated_route_requirement_insert_tx = pool.begin().await.unwrap();
+    let activated_route_requirement_insert = sqlx::query(
+        "INSERT INTO action_route_requirements (route_id, description, ordinal)
+         VALUES ($1, 'tampered requirement', 0)",
+    )
+    .bind(route.0)
+    .execute(&mut *activated_route_requirement_insert_tx)
+    .await;
+    assert!(
+        activated_route_requirement_insert.is_err(),
+        "requirements cannot be added to an activated route"
+    );
+    activated_route_requirement_insert_tx.rollback().await.unwrap();
+
+    let mut activated_route_requirement_update_tx = pool.begin().await.unwrap();
+    let activated_route_requirement_update = sqlx::query(
+        "UPDATE action_route_requirements
+         SET description = 'tampered requirement'
+         WHERE route_id = $1",
+    )
+    .bind(route.0)
+    .execute(&mut *activated_route_requirement_update_tx)
+    .await;
+    assert!(
+        activated_route_requirement_update.is_err(),
+        "requirements of an activated route must be immutable"
+    );
+    activated_route_requirement_update_tx.rollback().await.unwrap();
+
+    let mut activated_route_requirement_delete_tx = pool.begin().await.unwrap();
+    let activated_route_requirement_delete = sqlx::query(
+        "DELETE FROM action_route_requirements WHERE route_id = $1",
+    )
+    .bind(route.0)
+    .execute(&mut *activated_route_requirement_delete_tx)
+    .await;
+    assert!(
+        activated_route_requirement_delete.is_err(),
+        "requirements of an activated route cannot be deleted"
+    );
+    activated_route_requirement_delete_tx.rollback().await.unwrap();
 
     let mut activated_source_update_tx = pool.begin().await.unwrap();
     let activated_source_update = sqlx::query(

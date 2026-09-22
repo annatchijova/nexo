@@ -194,7 +194,8 @@ gives:
   the application layer at claim-insert time (a bare foreign key cannot
   express "non-empty").
 - **`action_routes`** — the durable form of `ActionRoute`: which claims and
-  mandatory requirements a route requires.
+  mandatory requirements a route requires. Once its bundle is activated, the
+  database also freezes its requirement rows.
 - **`action_evaluations`** — top-level columns plus the sealed JSON payload,
   as described above.
 - **`evaluation_receipts`** — application-owned binding evidence for a

@@ -8,6 +8,7 @@ members = [
     "crates/nexo-sandbox",
     "crates/nexo-extraction",
     "crates/nexo-policy-ar",
+    "crates/nexo-policy-ar-digital-violence",
     "crates/nexo-api",
     "crates/nexo-verifier",
 ]

@@ -219,7 +219,8 @@ gives:
   assembled atomically.
 - **`action_routes`** — the durable form of `ActionRoute`: which claims and
   mandatory requirements a route requires. Once its bundle is activated, the
-  database also freezes its requirement rows.
+  database also freezes its requirement rows; route-claim ordinals are unique
+  within each route.
 - **`action_evaluations`** — top-level columns plus the sealed JSON payload,
   as described above.
 - **`evaluation_receipts`** — application-owned binding evidence for a

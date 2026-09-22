@@ -416,6 +416,16 @@ retrieval, provenance, or authority fields while retaining the same source id.
 Captures are now append-only from insertion, with regression coverage for a
 source update.
 
+### RT-024-45 — Ordered policy edges could share an ordinal
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium determinism boundary
+
+Claim-source and route-claim edges carried ordinals but did not make the
+ordinal unique within their parent. Two valid rows could therefore produce
+ambiguous ordering in a persisted policy graph. The schema now enforces unique
+ordinals per claim and per route.
+
 ### RT-024-41 — Authentication identity could be rewritten directly
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

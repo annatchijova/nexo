@@ -37,6 +37,9 @@ claims; a claim may need a statute, a regulation, and an official guidance
 source. The relation itself is versioned in a policy bundle, not inferred from
 prose at render time.
 
+Persisted source-support edges have unique ordinals per claim so their order is
+unambiguous.
+
 ## Independent dimensions
 
 ### Authority kind

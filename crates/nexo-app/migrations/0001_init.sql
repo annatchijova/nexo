@@ -743,7 +743,8 @@ create table normative_claim_sources (
     source_id           bigint not null references normative_sources (id),
     role                support_role not null,
     ordinal             integer not null check (ordinal >= 0),
-    primary key (claim_id, source_id)
+    primary key (claim_id, source_id),
+    unique (claim_id, ordinal)
 );
 
 create function normative_claim_requires_source()
@@ -907,7 +908,8 @@ create table action_route_claims (
     route_id            bigint not null references action_routes (id),
     claim_id             bigint not null references normative_claims (id),
     ordinal              integer not null check (ordinal >= 0),
-    primary key (route_id, claim_id)
+    primary key (route_id, claim_id),
+    unique (route_id, ordinal)
 );
 
 -- A route's claims are interpreted under the route's policy bundle. A plain

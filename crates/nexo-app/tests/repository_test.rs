@@ -126,8 +126,9 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let mut audit_insert_tx = pool.begin().await.unwrap();
     let audit_row = sqlx::query(
         "INSERT INTO audit_log
-            (case_id, actor_id, event_kind, event_payload, entry_hash)
-         VALUES ($1, $2, 'test.event', '{}'::jsonb, $3)
+            (case_id, actor_id, occurred_at, event_kind, event_payload, entry_hash)
+         VALUES ($1, $2, TIMESTAMPTZ '2000-01-01 00:00:00+00',
+                 'test.event', '{}'::jsonb, $3)
          RETURNING id",
     )
     .bind(case.0)
@@ -138,6 +139,17 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     .unwrap();
     let audit_id: i64 = audit_row.get("id");
     audit_insert_tx.commit().await.unwrap();
+    let audit_time: chrono::DateTime<Utc> = sqlx::query_scalar(
+        "SELECT occurred_at FROM audit_log WHERE id = $1",
+    )
+    .bind(audit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        audit_time > Utc::now() - chrono::Duration::minutes(1),
+        "audit timestamps must come from the database clock"
+    );
 
     let mut audit_update_tx = pool.begin().await.unwrap();
     let audit_update = sqlx::query(

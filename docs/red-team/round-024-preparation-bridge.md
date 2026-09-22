@@ -599,3 +599,14 @@ existed. A direct writer could delete the receipt, then rewrite the sealed
 evaluation result while retaining the same durable evaluation identity. The
 database now rejects every evaluation update and delete after insertion; a
 separate non-actionable evaluation is used when testing receipt rejection.
+
+### RT-024-54 — Audit chronology was caller-controlled
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high forensic-integrity boundary
+
+The audit table rejected updates and deletes but accepted a caller-supplied
+`occurred_at`. A direct writer could therefore place a forged event in the
+past or future while preserving its append-only row. A `BEFORE INSERT` trigger
+now assigns the database timestamp, with regression coverage for a backdated
+event.

@@ -244,7 +244,7 @@ gives:
   `plan.md` defines the chain itself in `nexo-integrity`); this layer only
   guarantees every command that mutates state also appends exactly one audit
   row, in the same transaction, and a database trigger rejects updates and
-  deletes.
+  deletes; event timestamps are assigned by the database clock.
 
 ## What this layer explicitly does not do
 

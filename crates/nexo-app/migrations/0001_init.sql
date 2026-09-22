@@ -1570,6 +1570,18 @@ create table audit_log (
 create index audit_log_case_id_idx on audit_log (case_id);
 create index audit_log_occurred_at_idx on audit_log (occurred_at);
 
+create function audit_log_timestamp_is_server_assigned()
+returns trigger as $$
+begin
+    new.occurred_at := current_timestamp;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger audit_log_timestamp_is_server_assigned_trigger
+    before insert on audit_log
+    for each row execute function audit_log_timestamp_is_server_assigned();
+
 create function audit_log_is_append_only()
 returns trigger as $$
 begin

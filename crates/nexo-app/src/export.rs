@@ -12,6 +12,11 @@ use std::path::{Path, PathBuf};
 use nexo_integrity::{hash_bytes, Manifest, ManifestEntry, Sha256Digest};
 use serde_json::json;
 
+/// Aggregate export budget. Individual objects are bounded by the object
+/// store; this second limit prevents a caller from combining an unbounded
+/// number of otherwise-valid objects into one export.
+pub const DEFAULT_MAX_EXPORT_BYTES: u64 = 512 * 1024 * 1024;
+
 #[derive(Debug)]
 pub struct ExportArtifact<'a> {
     pub label: &'a str,
@@ -30,6 +35,7 @@ pub enum ExportError {
     InvalidRoot(PathBuf),
     InvalidArtifactLabel(String),
     Manifest(nexo_integrity::ManifestError),
+    TooLarge { actual_bytes: u64, max_bytes: u64 },
     Json(serde_json::Error),
     Io(io::Error),
 }
@@ -62,6 +68,24 @@ pub fn write_export(
     policy_bundle_digest: Sha256Digest,
     artifacts: &[ExportArtifact<'_>],
 ) -> Result<ExportResult, ExportError> {
+    write_export_with_limit(
+        destination,
+        case_reference,
+        generated_at_unix_seconds,
+        policy_bundle_digest,
+        artifacts,
+        DEFAULT_MAX_EXPORT_BYTES,
+    )
+}
+
+pub fn write_export_with_limit(
+    destination: impl AsRef<Path>,
+    case_reference: u64,
+    generated_at_unix_seconds: i64,
+    policy_bundle_digest: Sha256Digest,
+    artifacts: &[ExportArtifact<'_>],
+    max_bytes: u64,
+) -> Result<ExportResult, ExportError> {
     let destination = destination.as_ref();
     if destination.exists() {
         return Err(ExportError::InvalidRoot(destination.to_path_buf()));
@@ -73,9 +97,23 @@ pub fn write_export(
 
     let mut entries = Vec::with_capacity(artifacts.len());
     let mut materialized = Vec::with_capacity(artifacts.len());
+    let mut total_bytes = 0_u64;
     for artifact in artifacts {
         if artifact.label.is_empty() {
             return Err(ExportError::InvalidArtifactLabel(artifact.label.to_owned()));
+        }
+        total_bytes =
+            total_bytes
+                .checked_add(artifact.bytes.len() as u64)
+                .ok_or(ExportError::TooLarge {
+                    actual_bytes: u64::MAX,
+                    max_bytes,
+                })?;
+        if total_bytes > max_bytes {
+            return Err(ExportError::TooLarge {
+                actual_bytes: total_bytes,
+                max_bytes,
+            });
         }
         let digest = hash_bytes(artifact.bytes);
         entries.push(ManifestEntry::new(artifact.label, digest));
@@ -192,7 +230,7 @@ mod tests {
             Err(ExportError::InvalidRoot(_))
         ));
         assert!(matches!(
-            write_export(
+            write_export_with_limit(
                 root.path().join("invalid"),
                 7,
                 1_700_000_000,
@@ -200,9 +238,35 @@ mod tests {
                 &[ExportArtifact {
                     label: "",
                     bytes: b"evidence",
-                }]
+                }],
+                100,
             ),
             Err(ExportError::InvalidArtifactLabel(_))
         ));
+    }
+
+    #[test]
+    fn rejects_export_over_aggregate_budget_before_materializing() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("export");
+        let result = write_export_with_limit(
+            &destination,
+            7,
+            1_700_000_000,
+            hash_bytes(b"policy"),
+            &[ExportArtifact {
+                label: "artifact/1",
+                bytes: b"123456789",
+            }],
+            8,
+        );
+        assert!(matches!(
+            result,
+            Err(ExportError::TooLarge {
+                actual_bytes: 9,
+                max_bytes: 8
+            })
+        ));
+        assert!(!destination.exists());
     }
 }

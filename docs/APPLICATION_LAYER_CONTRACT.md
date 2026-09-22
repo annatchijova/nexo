@@ -181,9 +181,11 @@ gives:
   table does not match the discriminator.
 - **`derived_fact_inputs`, `inference_inputs`** — ordered input edges
   (`ordinal`), `UNIQUE (case_id, node_id, ordinal)` so input order is
-  reconstructible exactly as declared, and a `CHECK` bounding row count per
-  node is enforced at the application layer (see below) mirroring
-  `MAX_DERIVATION_INPUTS`/`MAX_INFERENCE_INPUTS`.
+  reconstructible exactly as declared. Database triggers enforce that
+  derivations consume only factual-support nodes and that all edges point to a
+  prior node, preserving the acyclic sequential graph. The application layer
+  enforces the row-count bounds mirroring `MAX_DERIVATION_INPUTS`/
+  `MAX_INFERENCE_INPUTS`.
 - **`policy_bundles`, `policy_bundle_activations`** — bundle identity is
   immutable after activation; `policy_bundle_activations` is append-only, per
   the transaction contract above. The database rejects activation updates and

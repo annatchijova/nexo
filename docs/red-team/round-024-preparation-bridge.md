@@ -313,6 +313,18 @@ artifact payload to a user-assertion node, violating the graph's typed-node
 invariant. A shared trigger now checks every payload table against the declared
 kind, with a regression test for a cross-kind insert.
 
+### RT-024-30 — Derived facts could consume interpretations
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high epistemic-integrity boundary
+
+The database accepted any existing `case_nodes` row as a derived-fact input,
+including an `Inference`, and did not require the referenced node to precede
+the derived node. That could launder an interpretation into factual support or
+permit cycles through direct writes. Triggers now require a prior,
+non-inference input for derivations and prior-node inputs for inferences, with
+regression coverage for the forbidden derived-fact edge.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

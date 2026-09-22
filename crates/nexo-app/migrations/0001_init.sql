@@ -198,6 +198,46 @@ create table inference_inputs (
     foreign key (case_id, input_node_id) references case_nodes (case_id, node_id)
 );
 
+create function derived_fact_input_matches_graph_rules()
+returns trigger as $$
+declare
+    input_kind case_node_kind;
+begin
+    select kind into input_kind
+    from case_nodes
+    where case_id = new.case_id and node_id = new.input_node_id;
+
+    if input_kind is null
+       or input_kind = 'inference'::case_node_kind
+       or new.input_node_id >= new.node_id then
+        raise exception
+            'derived fact (% %, %) has an invalid input node',
+            new.case_id, new.node_id, new.input_node_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger derived_fact_input_matches_graph_rules_trigger
+    before insert or update on derived_fact_inputs
+    for each row execute function derived_fact_input_matches_graph_rules();
+
+create function inference_input_precedes_node()
+returns trigger as $$
+begin
+    if new.input_node_id >= new.node_id then
+        raise exception
+            'inference (% %, %) must reference a prior node',
+            new.case_id, new.node_id, new.input_node_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger inference_input_precedes_node_trigger
+    before insert or update on inference_inputs
+    for each row execute function inference_input_precedes_node();
+
 create function case_node_payload_matches_kind()
 returns trigger as $$
 declare

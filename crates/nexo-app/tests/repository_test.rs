@@ -106,6 +106,49 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
         "a payload table must match the case node discriminator"
     );
     mismatched_payload_tx.rollback().await.unwrap();
+
+    let mut invalid_derived_input_tx = pool.begin().await.unwrap();
+    let tool_version = repository::ensure_tool_version(&mut invalid_derived_input_tx, "graph-test", 1)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO case_nodes (case_id, node_id, kind)
+         VALUES ($1, 4, 'derived_fact'), ($1, 5, 'inference')",
+    )
+    .bind(case.0)
+    .execute(&mut *invalid_derived_input_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO derived_fact_nodes (case_id, node_id, transformation_tool_version)
+         VALUES ($1, 4, $2)",
+    )
+    .bind(case.0)
+    .bind(tool_version.0)
+    .execute(&mut *invalid_derived_input_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO inference_nodes (case_id, node_id, method_tool_version, confidence)
+         VALUES ($1, 5, $2, 'low'::confidence_bound)",
+    )
+    .bind(case.0)
+    .bind(tool_version.0)
+    .execute(&mut *invalid_derived_input_tx)
+    .await
+    .unwrap();
+    let invalid_derived_input = sqlx::query(
+        "INSERT INTO derived_fact_inputs (case_id, node_id, ordinal, input_node_id)
+         VALUES ($1, 4, 0, 5)",
+    )
+    .bind(case.0)
+    .execute(&mut *invalid_derived_input_tx)
+    .await;
+    assert!(
+        invalid_derived_input.is_err(),
+        "derived facts must not consume inference nodes"
+    );
+    invalid_derived_input_tx.rollback().await.unwrap();
 }
 
 /// The core promise of the transaction contract's item 2: concurrent

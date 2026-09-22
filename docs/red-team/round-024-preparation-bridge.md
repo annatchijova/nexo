@@ -323,6 +323,17 @@ After the payload-kind trigger was added, a direct writer could still update
 discriminator. The new trigger rejects kind changes, with a regression probe
 against an existing user-assertion node.
 
+### RT-024-33 — Audit history was mutable by direct SQL
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high audit-integrity boundary
+
+`audit_log` was described as append-only, but enforcement was deferred to a
+future deployment role and no database trigger existed. A direct writer could
+rewrite or delete the event history even while leaving the hash-chain fields
+syntactically present. The new trigger rejects both operations, with a
+regression test covering update and delete.
+
 ### RT-024-30 — Derived facts could consume interpretations
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

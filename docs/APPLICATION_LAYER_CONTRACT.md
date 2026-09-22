@@ -215,7 +215,8 @@ gives:
 - **`audit_log`** — append-only, hash-chained event record (Step 2 of
   `plan.md` defines the chain itself in `nexo-integrity`); this layer only
   guarantees every command that mutates state also appends exactly one audit
-  row, in the same transaction.
+  row, in the same transaction, and a database trigger rejects updates and
+  deletes.
 
 ## What this layer explicitly does not do
 

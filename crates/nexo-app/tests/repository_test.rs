@@ -11,7 +11,7 @@
 use chrono::Utc;
 use nexo_app::repository::{self, ActorRowId};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 /// Connects only — does not apply the migration. Tests run concurrently
 /// against one shared database (`scripts/test_repository.sh` applies the
@@ -47,6 +47,40 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let Some(pool) = pool().await else { return };
     let actor = unique_actor(&pool, "seq").await;
     let case = repository::create_case(&pool, actor).await.unwrap();
+
+    let mut audit_insert_tx = pool.begin().await.unwrap();
+    let audit_row = sqlx::query(
+        "INSERT INTO audit_log
+            (case_id, actor_id, event_kind, event_payload, entry_hash)
+         VALUES ($1, $2, 'test.event', '{}'::jsonb, $3)
+         RETURNING id",
+    )
+    .bind(case.0)
+    .bind(actor.0)
+    .bind(vec![1_u8, 2, 3])
+    .fetch_one(&mut *audit_insert_tx)
+    .await
+    .unwrap();
+    let audit_id: i64 = audit_row.get("id");
+    audit_insert_tx.commit().await.unwrap();
+
+    let mut audit_update_tx = pool.begin().await.unwrap();
+    let audit_update = sqlx::query(
+        "UPDATE audit_log SET event_kind = 'tampered.event' WHERE id = $1",
+    )
+    .bind(audit_id)
+    .execute(&mut *audit_update_tx)
+    .await;
+    assert!(audit_update.is_err(), "audit log events must be immutable");
+    audit_update_tx.rollback().await.unwrap();
+
+    let mut audit_delete_tx = pool.begin().await.unwrap();
+    let audit_delete = sqlx::query("DELETE FROM audit_log WHERE id = $1")
+        .bind(audit_id)
+        .execute(&mut *audit_delete_tx)
+        .await;
+    assert!(audit_delete.is_err(), "audit log events must not be deletable");
+    audit_delete_tx.rollback().await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
     let a1 = repository::insert_user_assertion_node(&mut tx, case, actor, Utc::now(), true)

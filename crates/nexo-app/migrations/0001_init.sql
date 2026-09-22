@@ -1181,7 +1181,13 @@ create table audit_log (
 create index audit_log_case_id_idx on audit_log (case_id);
 create index audit_log_occurred_at_idx on audit_log (occurred_at);
 
--- No update or delete grants are defined here; enforcing true
--- application-level immutability (revoking UPDATE/DELETE from the runtime
--- role) belongs to the Step 9 deployment hardening pass, once the runtime
--- role itself is defined.
+create function audit_log_is_append_only()
+returns trigger as $$
+begin
+    raise exception 'audit log is append-only';
+end;
+$$ language plpgsql;
+
+create trigger audit_log_is_append_only_trigger
+    before update or delete on audit_log
+    for each row execute function audit_log_is_append_only();

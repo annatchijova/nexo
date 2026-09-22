@@ -240,7 +240,8 @@ gives:
   were prepared from; a preparation can never reference a
   `NonActionable` evaluation, enforced at the application layer at
   preparation-insert time, and every invalidated preparation carries a
-  non-empty reason.
+  non-empty reason. New rows always start in `prepared`; export and
+  invalidation are explicit later transitions.
 - **`audit_log`** — append-only, hash-chained event record (Step 2 of
   `plan.md` defines the chain itself in `nexo-integrity`); this layer only
   guarantees every command that mutates state also appends exactly one audit

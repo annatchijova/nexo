@@ -1409,6 +1409,22 @@ create table preparations (
 create index preparations_action_evaluation_idx
     on preparations (action_evaluation_id);
 
+create function preparations_start_prepared()
+returns trigger as $$
+begin
+    if new.status <> 'prepared'::preparation_status then
+        raise exception
+            'preparation % must start in prepared state',
+            new.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger preparations_start_prepared_trigger
+    before insert on preparations
+    for each row execute function preparations_start_prepared();
+
 -- A preparation can only reference an actionable evaluation; a bare foreign
 -- key cannot express that, so it is enforced with a trigger rather than a
 -- second, looser copy of the evaluator's decision.

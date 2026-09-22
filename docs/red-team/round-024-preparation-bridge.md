@@ -621,3 +621,14 @@ The audit table rejected updates and deletes but accepted a caller-supplied
 past or future while preserving its append-only row. A `BEFORE INSERT` trigger
 now assigns the database timestamp, with regression coverage for a backdated
 event.
+
+### RT-024-56 — Preparations could start in `exported`
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high lifecycle-integrity boundary
+
+The status enum described a lifecycle, but direct SQL could insert a
+preparation already marked `exported`, bypassing the required prepared-to-
+exported transition and any export-side audit. A `BEFORE INSERT` guard now
+requires every preparation to start as `prepared`; later states must be
+reached through the lifecycle transition path.

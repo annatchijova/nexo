@@ -1044,6 +1044,29 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     invalidated_without_reason_tx.rollback().await.unwrap();
 
+    let mut exported_at_insert_tx = pool.begin().await.unwrap();
+    let exported_at_insert = sqlx::query(
+        "INSERT INTO preparations
+            (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+             input_manifest_digest_id, generator_version, kind, status,
+             output_digest_id, output_provenance_id)
+         VALUES ($1, $2, $3, $4, 'test', 'draft_request'::preparation_kind,
+                 'exported'::preparation_status, $5, $6)",
+    )
+    .bind(evaluation.0)
+    .bind(route.0)
+    .bind(digest.0)
+    .bind(input_manifest_digest.0)
+    .bind(result_digest.0)
+    .bind(provenance.0)
+    .execute(&mut *exported_at_insert_tx)
+    .await;
+    assert!(
+        exported_at_insert.is_err(),
+        "a preparation must not start in exported state"
+    );
+    exported_at_insert_tx.rollback().await.unwrap();
+
     let mut next_policy_tx = pool.begin().await.unwrap();
     let next_bundle = repository::insert_policy_bundle(
         &mut next_policy_tx,

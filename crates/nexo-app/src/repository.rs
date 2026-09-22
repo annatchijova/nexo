@@ -125,6 +125,44 @@ pub async fn create_actor(pool: &Pool, credential: &str) -> Result<ActorRowId, R
     Ok(ActorRowId(actor_id))
 }
 
+/// Issues another credential for an existing actor. Multiple active rows are
+/// intentional: callers can distribute the replacement before revoking the
+/// old credential.
+pub async fn issue_actor_credential(
+    pool: &Pool,
+    actor: ActorRowId,
+    credential: &str,
+) -> Result<(), RepoError> {
+    let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
+    sqlx::query(
+        "INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)",
+    )
+    .bind(actor.0)
+    .bind(digest)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Revokes a credential without exposing its digest or the actor it belonged
+/// to. The boolean tells an administrative caller whether an active row was
+/// actually changed.
+pub async fn revoke_actor_credential(
+    pool: &Pool,
+    credential: &str,
+) -> Result<bool, RepoError> {
+    let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
+    let result = sqlx::query(
+        "UPDATE actor_credentials
+         SET revoked_at = now()
+         WHERE credential_digest = $1 AND revoked_at IS NULL",
+    )
+    .bind(digest)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 pub async fn find_actor_by_identity(
     pool: &Pool,
     credential: &str,

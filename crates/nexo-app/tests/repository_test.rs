@@ -50,6 +50,46 @@ async fn applying_the_schema_twice_is_idempotent() {
     assert!(applied);
 }
 
+#[tokio::test]
+async fn credentials_rotate_with_overlap_then_revoke() {
+    let Some(pool) = pool().await else { return };
+    let suffix = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let old = format!("old-credential-{suffix}");
+    let replacement = format!("replacement-credential-{suffix}");
+    let actor = repository::create_actor(&pool, &old).await.unwrap();
+
+    repository::issue_actor_credential(&pool, actor, &replacement)
+        .await
+        .unwrap();
+    assert_eq!(
+        repository::find_actor_by_identity(&pool, &old)
+            .await
+            .unwrap(),
+        Some(actor)
+    );
+    assert_eq!(
+        repository::find_actor_by_identity(&pool, &replacement)
+            .await
+            .unwrap(),
+        Some(actor)
+    );
+
+    assert!(repository::revoke_actor_credential(&pool, &old).await.unwrap());
+    assert!(
+        repository::find_actor_by_identity(&pool, &old)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        repository::find_actor_by_identity(&pool, &replacement)
+            .await
+            .unwrap(),
+        Some(actor)
+    );
+    assert!(!repository::revoke_actor_credential(&pool, &old).await.unwrap());
+}
+
 async fn unique_actor(pool: &PgPool, label: &str) -> ActorRowId {
     let identity = format!(
         "{label}-{}",

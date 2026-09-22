@@ -21,7 +21,7 @@ credential identity, immutable actor/digest/issuance fields, and nullable
 the old one is revoked. The actor and case ownership model remains unchanged.
 
 This is appropriate only for high-entropy bearer credentials; it is not a
-password-hashing scheme for human secrets. Credential issuance/revocation
-operations and an upgrade path for pre-existing plaintext actor rows remain
-deployment work and are intentionally not implied as complete here.
-
+password-hashing scheme for human secrets. Repository operations now rehearse
+issue/overlap/revoke, but no HTTP account-management endpoint exists yet. An
+upgrade path for pre-existing plaintext actor rows remains deployment work and
+is intentionally not implied as complete here.

@@ -170,7 +170,9 @@ gives:
   worker's typed extraction result. Digest identities are immutable after
   insertion, and provenance records are immutable after insertion. Once an
   ingestion row is bound to an artifact, its declared identity fields are
-  immutable; only its sandbox status may transition.
+  immutable; only its sandbox status may transition. Artifact insertion also
+  requires matching case and byte-size identities across ingestion and
+  provenance.
 - **`tools`, `tool_versions`** — `UNIQUE (tool_id, version)`, mirroring
   `ToolVersion`'s "version zero is unrepresentable" rule: version is
   `NOT NULL` and constrained `> 0`.

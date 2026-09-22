@@ -191,6 +191,36 @@ create table artifact_nodes (
     foreign key (case_id, node_id) references case_nodes (case_id, node_id)
 );
 
+create function artifact_identity_matches_ingestion_and_provenance()
+returns trigger as $$
+declare
+    ingestion_case_id bigint;
+    ingestion_size bigint;
+    provenance_case_id bigint;
+begin
+    select case_id, byte_size
+      into ingestion_case_id, ingestion_size
+    from ingestion_records
+    where id = new.ingestion_record_id;
+    select case_id into provenance_case_id
+    from provenance_records
+    where id = new.source_provenance_id;
+
+    if ingestion_case_id is distinct from new.case_id
+       or provenance_case_id is distinct from new.case_id
+       or ingestion_size is distinct from new.size_bytes then
+        raise exception
+            'artifact (%) identity does not match ingestion/provenance',
+            new.node_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger artifact_identity_matches_ingestion_and_provenance_trigger
+    before insert or update on artifact_nodes
+    for each row execute function artifact_identity_matches_ingestion_and_provenance();
+
 create table observation_nodes (
     case_id                 bigint not null,
     node_id                 bigint not null,

@@ -424,6 +424,33 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     );
     ingestion_update_tx.rollback().await.unwrap();
 
+    let mut mismatched_artifact_tx = pool.begin().await.unwrap();
+    let mismatched_ingestion = repository::insert_ingestion_record(
+        &mut mismatched_artifact_tx,
+        case,
+        Utc::now(),
+        Some("mismatch.txt"),
+        Some("text/plain"),
+        10,
+        "accepted",
+    )
+    .await
+    .unwrap();
+    let mismatched_artifact = repository::insert_artifact_node(
+        &mut mismatched_artifact_tx,
+        case,
+        digest,
+        11,
+        mismatched_ingestion,
+        provenance,
+    )
+    .await;
+    assert!(
+        mismatched_artifact.is_err(),
+        "artifact size must match its ingestion record"
+    );
+    mismatched_artifact_tx.rollback().await.unwrap();
+
     let nodes = repository::list_case_node_ids(&pool, case).await.unwrap();
     assert_eq!(nodes, vec![1, 2]);
 }

@@ -354,6 +354,17 @@ the record's declared filename, MIME, size, timestamp, or case afterward. The
 database now freezes those identity fields once an artifact binds the record;
 the sandbox status remains mutable for its lifecycle.
 
+### RT-024-38 — Artifact identity fields could disagree across tables
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high evidence-integrity boundary
+
+The artifact row duplicated byte size and referenced ingestion/provenance rows,
+but the database did not require equal size or same-case provenance. A direct
+writer could bind one artifact node to contradictory metadata. The artifact
+trigger now requires equal byte size and matching case identities, with a
+regression test for a size mismatch.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

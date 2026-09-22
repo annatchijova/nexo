@@ -175,7 +175,8 @@ gives:
   provenance.
 - **`tools`, `tool_versions`** — `UNIQUE (tool_id, version)`, mirroring
   `ToolVersion`'s "version zero is unrepresentable" rule: version is
-  `NOT NULL` and constrained `> 0`.
+  `NOT NULL` and constrained `> 0`; identity fields are immutable after
+  insertion.
 - **`case_nodes`** plus one payload table per `NodeKind`
   (`artifact_nodes`, `observation_nodes`, `user_assertion_nodes`,
   `derived_fact_nodes`, `inference_nodes`) — `case_nodes` is the kind

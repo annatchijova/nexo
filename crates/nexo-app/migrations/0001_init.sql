@@ -141,6 +141,35 @@ create table tool_versions (
     unique (tool_id, version)
 );
 
+create function tool_identity_fields_are_immutable()
+returns trigger as $$
+begin
+    if new.name is distinct from old.name then
+        raise exception 'tool identity is immutable';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger tool_identity_fields_are_immutable_trigger
+    before update on tools
+    for each row execute function tool_identity_fields_are_immutable();
+
+create function tool_version_identity_fields_are_immutable()
+returns trigger as $$
+begin
+    if new.tool_id is distinct from old.tool_id
+       or new.version is distinct from old.version then
+        raise exception 'tool version identity is immutable';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger tool_version_identity_fields_are_immutable_trigger
+    before update on tool_versions
+    for each row execute function tool_version_identity_fields_are_immutable();
+
 -- ---------------------------------------------------------------------
 -- Case graph: node kind discriminator plus one payload table per kind.
 -- NodeId is scoped per case and assigned sequentially starting at 1,

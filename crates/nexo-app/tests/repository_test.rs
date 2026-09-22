@@ -424,6 +424,19 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     );
     ingestion_update_tx.rollback().await.unwrap();
 
+    let mut tool_version_update_tx = pool.begin().await.unwrap();
+    let tool_version_update = sqlx::query(
+        "UPDATE tool_versions SET version = 2 WHERE id = $1",
+    )
+    .bind(tool_version.0)
+    .execute(&mut *tool_version_update_tx)
+    .await;
+    assert!(
+        tool_version_update.is_err(),
+        "tool version identity must be immutable"
+    );
+    tool_version_update_tx.rollback().await.unwrap();
+
     let mut mismatched_artifact_tx = pool.begin().await.unwrap();
     let mismatched_ingestion = repository::insert_ingestion_record(
         &mut mismatched_artifact_tx,

@@ -365,6 +365,16 @@ writer could bind one artifact node to contradictory metadata. The artifact
 trigger now requires equal byte size and matching case identities, with a
 regression test for a size mismatch.
 
+### RT-024-39 — Extractor version identity remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium evidence-integrity boundary
+
+An observation retained a `tool_version_id`, but a direct writer could change
+the referenced version number or tool identity after extraction. The database
+now freezes tool and tool-version identity fields while allowing idempotent
+same-value upserts, with regression coverage for a version update.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

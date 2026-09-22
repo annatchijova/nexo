@@ -492,6 +492,18 @@ writer could bind a valid but unrelated digest to an otherwise valid bundle.
 The new trigger rejects that mismatch, with a repository regression test using
 an isolated failed insert.
 
+### RT-024-46 — Bare case nodes could commit without typed payloads
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high case-graph integrity boundary
+
+The payload tables checked that an inserted payload matched an existing
+`case_nodes.kind`, but the inverse obligation was missing: a direct writer
+could commit a bare `case_nodes` row with no typed payload at all. That left
+the graph structurally incomplete while still satisfying the composite
+foreign keys. A deferred constraint trigger now requires the matching payload
+at transaction commit, with regression coverage for the bare-node commit.
+
 ### RT-024-23 — Other digest algorithms remained bindable outside preparation
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

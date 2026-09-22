@@ -546,6 +546,41 @@ create trigger inference_nodes_match_case_node_kind_trigger
     before insert or update on inference_nodes
     for each row execute function case_node_payload_matches_kind();
 
+create function case_node_requires_typed_payload()
+returns trigger as $$
+begin
+    if (new.kind = 'artifact' and not exists (
+            select 1 from artifact_nodes
+            where case_id = new.case_id and node_id = new.node_id
+        ))
+       or (new.kind = 'observation' and not exists (
+            select 1 from observation_nodes
+            where case_id = new.case_id and node_id = new.node_id
+        ))
+       or (new.kind = 'user_assertion' and not exists (
+            select 1 from user_assertion_nodes
+            where case_id = new.case_id and node_id = new.node_id
+        ))
+       or (new.kind = 'derived_fact' and not exists (
+            select 1 from derived_fact_nodes
+            where case_id = new.case_id and node_id = new.node_id
+        ))
+       or (new.kind = 'inference' and not exists (
+            select 1 from inference_nodes
+            where case_id = new.case_id and node_id = new.node_id
+        )) then
+        raise exception 'case node (% %, %) lacks matching typed payload',
+            new.case_id, new.node_id, new.kind;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger case_node_requires_typed_payload_trigger
+    after insert or update on case_nodes
+    deferrable initially deferred
+    for each row execute function case_node_requires_typed_payload();
+
 -- ---------------------------------------------------------------------
 -- Policy: bundles, activations, normative sources and claims.
 -- Mirrors docs/POLICY_BUNDLE_CONTRACT.md field-for-field.

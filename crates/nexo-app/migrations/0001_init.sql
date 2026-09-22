@@ -324,6 +324,38 @@ create constraint trigger inference_input_count_trigger
     deferrable initially deferred
     for each row execute function inference_input_count_is_bounded();
 
+create function case_graph_rows_are_append_only()
+returns trigger as $$
+begin
+    raise exception 'case graph rows are append-only';
+end;
+$$ language plpgsql;
+
+create trigger case_nodes_are_append_only_trigger
+    before update or delete on case_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger artifact_nodes_are_append_only_trigger
+    before update or delete on artifact_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger observation_nodes_are_append_only_trigger
+    before update or delete on observation_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger user_assertion_nodes_are_append_only_trigger
+    before update or delete on user_assertion_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger derived_fact_nodes_are_append_only_trigger
+    before update or delete on derived_fact_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger inference_nodes_are_append_only_trigger
+    before update or delete on inference_nodes
+    for each row execute function case_graph_rows_are_append_only();
+create trigger derived_fact_inputs_are_append_only_trigger
+    before update or delete on derived_fact_inputs
+    for each row execute function case_graph_rows_are_append_only();
+create trigger inference_inputs_are_append_only_trigger
+    before update or delete on inference_inputs
+    for each row execute function case_graph_rows_are_append_only();
+
 create function case_node_payload_matches_kind()
 returns trigger as $$
 declare

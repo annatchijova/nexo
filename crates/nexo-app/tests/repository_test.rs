@@ -113,6 +113,19 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     );
     kind_update_tx.rollback().await.unwrap();
 
+    let mut payload_update_tx = pool.begin().await.unwrap();
+    let payload_update = sqlx::query(
+        "UPDATE user_assertion_nodes
+         SET confirmation = 'unconfirmed'::confirmation_state
+         WHERE case_id = $1 AND node_id = $2",
+    )
+    .bind(case.0)
+    .bind(a1.0)
+    .execute(&mut *payload_update_tx)
+    .await;
+    assert!(payload_update.is_err(), "case graph payloads must be immutable");
+    payload_update_tx.rollback().await.unwrap();
+
     let mut digest_insert_tx = pool.begin().await.unwrap();
     let immutable_digest = repository::upsert_digest(
         &mut digest_insert_tx,

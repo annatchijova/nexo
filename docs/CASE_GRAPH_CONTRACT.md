@@ -52,6 +52,10 @@ Every provenance field is mandatory at construction. A missing field is a
 typed construction error, never a silent default. The table elaborates the
 ontology row in `docs/ARCHITECTURE.md`; it does not reassign meaning.
 
+Case-graph nodes, typed payloads, and input edges are append-only after
+construction. A correction is represented by a new node or edge, preserving
+the identity used by prior evaluations and receipts.
+
 ## The evidence/interpretation boundary
 
 Factual support kinds are exactly the graph kinds whose provenance can

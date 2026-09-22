@@ -180,7 +180,8 @@ gives:
   `case_nodes` so a node can never exist without exactly one typed payload
   row of the matching kind. Database triggers also reject a payload whose
   table does not match the discriminator, and the discriminator is immutable
-  after node creation.
+  after node creation; all graph nodes, payloads, and input edges are
+  append-only.
 - **`derived_fact_inputs`, `inference_inputs`** — ordered input edges
   (`ordinal`), `UNIQUE (case_id, node_id, ordinal)` so input order is
   reconstructible exactly as declared. Database triggers enforce that

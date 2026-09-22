@@ -323,6 +323,17 @@ After the payload-kind trigger was added, a direct writer could still update
 discriminator. The new trigger rejects kind changes, with a regression probe
 against an existing user-assertion node.
 
+### RT-024-35 — Case-graph payloads remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high case/evaluation-integrity boundary
+
+The graph tables allowed direct updates to payload fields after a node had
+already been used as evidence. A receipt could therefore retain the same node
+identity while its assertion or provenance changed underneath it. The graph
+tables are now append-only; corrections require new nodes or edges, with a
+regression test against a user-assertion payload update.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

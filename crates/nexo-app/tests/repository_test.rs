@@ -34,6 +34,22 @@ async fn pool() -> Option<PgPool> {
     }
 }
 
+#[tokio::test]
+async fn applying_the_schema_twice_is_idempotent() {
+    let Some(pool) = pool().await else { return };
+    repository::apply_migration(&pool).await.unwrap();
+    repository::apply_migration(&pool).await.unwrap();
+    let applied: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM nexo_schema_migrations WHERE version = '0001_init'
+         )",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(applied);
+}
+
 async fn unique_actor(pool: &PgPool, label: &str) -> ActorRowId {
     let identity = format!(
         "{label}-{}",

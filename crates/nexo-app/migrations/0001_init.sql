@@ -3,6 +3,11 @@
 -- records state that nexo-core already validated in memory; it does not
 -- re-derive or loosen any nexo-core invariant.
 
+create table nexo_schema_migrations (
+    version             text primary key,
+    applied_at          timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------
 -- Actors and cases
 -- ---------------------------------------------------------------------
@@ -1662,3 +1667,7 @@ $$ language plpgsql;
 create trigger audit_log_is_append_only_trigger
     before update or delete on audit_log
     for each row execute function audit_log_is_append_only();
+
+insert into nexo_schema_migrations (version)
+values ('0001_init')
+on conflict (version) do nothing;

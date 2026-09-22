@@ -77,7 +77,28 @@ pub async fn connect(database_url: &str) -> Result<Pool, RepoError> {
 }
 
 pub async fn apply_migration(pool: &Pool) -> Result<(), RepoError> {
-    sqlx::raw_sql(crate::SCHEMA_MIGRATION).execute(pool).await?;
+    // The whole baseline runs in one transaction. A process crash rolls back
+    // every DDL statement, while the advisory lock serializes concurrent
+    // starts before either process decides whether the version is present.
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(0x4e45584f_53434831_i64)
+        .execute(&mut *tx)
+        .await?;
+    let applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+             SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'nexo_schema_migrations'
+         )",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if !applied {
+        sqlx::raw_sql(crate::SCHEMA_MIGRATION)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }
 

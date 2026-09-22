@@ -50,6 +50,15 @@ function escapeHtml(value: string): string {
   })[character] ?? character);
 }
 
+function safeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function endpoint(path: string): string {
   return `${state.apiBase.replace(/\/$/, "")}${path}`;
 }
@@ -105,7 +114,7 @@ function renderEvaluation(): string {
     <div class="evaluation-heading"><span class="eyebrow">${actionable ? "ACTION OPTION" : "HONEST NEGATIVE"}</span><h3>${escapeHtml(title)}</h3></div>
     <p>${actionable ? (evaluation.available ? "This route is available from the recorded support." : "This route is not available until its requirements are met.") : escapeHtml(evaluation.cause ? `Reason: ${evaluation.cause.replaceAll("_", " ")}.` : "The current case does not support an available action.")}</p>
     <h4>Why this is shown</h4>${renderEvidence()}
-    ${evaluation.legal_support?.length ? `<h4>Legal support</h4><ul class="citation-list">${evaluation.legal_support.map((citation) => `<li><strong>${escapeHtml(citation.proposition)}</strong><span>${escapeHtml(citation.source_issuer)}</span><a href="${escapeHtml(citation.source_locator)}" target="_blank" rel="noreferrer">Open captured source</a></li>`).join("")}</ul>` : ""}
+    ${evaluation.legal_support?.length ? `<h4>Legal support</h4><ul class="citation-list">${evaluation.legal_support.map((citation) => { const sourceUrl = safeExternalUrl(citation.source_locator); return `<li><strong>${escapeHtml(citation.proposition)}</strong><span>${escapeHtml(citation.source_issuer)}</span>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">Open captured source</a>` : "<span class=\"muted\">Captured source has no safe web URL</span>"}</li>`; }).join("")}</ul>` : ""}
   </article>`;
 }
 

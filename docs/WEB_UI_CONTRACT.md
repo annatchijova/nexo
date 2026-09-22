@@ -31,7 +31,8 @@ action and it never presents preparation as filing, sending, or submission.
 The browser is user-controlled. It is not an authority boundary: the API
 must authenticate the bearer token and enforce case ownership for every
 request. Values returned by the API are escaped before the UI inserts them
-into HTML. Citation links open in a separate context with `noreferrer`.
+into HTML. Citation links are limited to `http:`/`https:` URLs and open in a
+separate context with `noreferrer`.
 
 ## Development
 

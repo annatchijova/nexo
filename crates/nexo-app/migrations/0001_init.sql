@@ -676,6 +676,27 @@ create table policy_bundle_activations (
 create index policy_bundle_activations_bundle_idx
     on policy_bundle_activations (policy_bundle_id);
 
+create function activated_policy_bundle_requires_claim()
+returns trigger as $$
+begin
+    if not exists (
+        select 1
+        from normative_claims
+        where policy_bundle_id = new.policy_bundle_id
+    ) then
+        raise exception
+            'policy bundle % cannot activate without claims',
+            new.policy_bundle_id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
+
+create constraint trigger activated_policy_bundle_requires_claim_trigger
+    after insert on policy_bundle_activations
+    deferrable initially deferred
+    for each row execute function activated_policy_bundle_requires_claim();
+
 create function policy_bundle_activations_are_append_only()
 returns trigger as $$
 begin

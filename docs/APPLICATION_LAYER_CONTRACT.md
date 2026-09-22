@@ -213,7 +213,8 @@ gives:
   the transaction contract above. The database rejects activation updates and
   deletes, and rejects new claims or routes after activation, so an old
   activation cannot be erased to unlock historical mutation;
-  each bundle also has at most one activation event.
+  each bundle also has at most one activation event, and activation requires
+  at least one normative claim.
 - **`normative_sources`, `normative_claims`, `normative_claim_sources`** —
   mirrors `docs/POLICY_BUNDLE_CONTRACT.md`'s bundle identity fields exactly;
   `normative_claim_sources` requires at least one row per claim through a

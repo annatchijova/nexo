@@ -542,6 +542,17 @@ reject new claims and routes in activated bundles, with regression coverage for
 both paths. Route requirements already had an insert guard through the existing
 activation immutability trigger.
 
+### RT-024-50 — Empty policy bundles could be activated
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+The persistence layer allowed an activation row for a bundle with no
+normative claims, even though the core policy constructor rejects an empty
+claim set. A direct writer could therefore mark an incomplete policy as
+authorized. A deferred activation constraint now requires at least one claim,
+while preserving atomic bundle assembly before activation.
+
 ### RT-024-49 — Evaluations could use an unactivated policy bundle
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

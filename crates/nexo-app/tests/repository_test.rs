@@ -783,6 +783,22 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "an action route without claims must not commit"
     );
 
+    let mut empty_bundle_activation_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO policy_bundle_activations (policy_bundle_id, activated_by_actor_id)
+         VALUES ($1, $2)",
+    )
+    .bind(empty_route_bundle.0)
+    .bind(actor.0)
+    .execute(&mut *empty_bundle_activation_tx)
+    .await
+    .unwrap();
+    let empty_bundle_activation_commit = empty_bundle_activation_tx.commit().await;
+    assert!(
+        empty_bundle_activation_commit.is_err(),
+        "a policy bundle without claims must not activate"
+    );
+
     let mut activated_route_insert_tx = pool.begin().await.unwrap();
     let activated_route_insert = sqlx::query(
         "INSERT INTO action_routes (policy_bundle_id, jurisdiction, title)
@@ -952,6 +968,17 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         digest,
         digest,
         provenance,
+    )
+    .await
+    .unwrap();
+    repository::insert_normative_claim(
+        &mut next_policy_tx,
+        next_bundle,
+        "next policy claim",
+        "AR",
+        chrono::NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+        None,
+        &[(source, "primary")],
     )
     .await
     .unwrap();

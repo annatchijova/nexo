@@ -1,0 +1,13 @@
+[package]
+name = "nexo-report"
+description = "Human-readable (Markdown/HTML) reports over an already-rendered, sealed NEXO evaluation. Never computes a new decision. Design adapted from Anna Tchijova's zaynor/src/zaynor/report.py (Apache-2.0), not copied: NEXO's sealed shape (nexo-core ActionEvaluation, no per-finding MITRE/agent fields) differs from ZAYNOR's ZaynorAuthoritativeResult."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono = "0.4.45"
+serde_json = "1.0.151"
+nexo-integrity = { path = "../nexo-integrity" }

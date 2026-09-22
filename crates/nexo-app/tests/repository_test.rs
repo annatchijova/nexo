@@ -1638,3 +1638,31 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     non_actionable_tx.rollback().await.unwrap();
 }
+
+/// Regression test: `upsert_digest` must never issue a raw UPDATE against
+/// `digests` (the table is immutable by trigger, unconditionally, unlike
+/// `tools`/`tool_versions`). Two concurrent uploads of byte-for-byte
+/// identical content — a realistic scenario, not a corner case — must both
+/// resolve to the same digest row without either one failing.
+#[tokio::test]
+async fn concurrent_upsert_of_the_same_digest_never_fails() {
+    let Some(pool) = pool().await else { return };
+
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let pool = pool.clone();
+        handles.push(tokio::spawn(async move {
+            let mut tx = pool.begin().await.unwrap();
+            let digest = repository::upsert_digest(&mut tx, "sha256", &"11".repeat(32))
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+            digest.0
+        }));
+    }
+    let mut ids = Vec::new();
+    for handle in handles {
+        ids.push(handle.await.unwrap());
+    }
+    assert!(ids.iter().all(|id| *id == ids[0]), "all concurrent upserts must resolve to the same row");
+}

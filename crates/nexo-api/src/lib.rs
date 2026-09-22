@@ -72,6 +72,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::list_evaluations),
         )
         .route(
+            "/v1/cases/{case_id}/evaluations/{evaluation_id}/report",
+            get(handlers::download_report),
+        )
+        .route(
             "/v1/cases/{case_id}/preparations",
             post(handlers::prepare_case),
         )

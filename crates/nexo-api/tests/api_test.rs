@@ -34,6 +34,7 @@ fn docker_ready() -> bool {
 }
 
 async fn test_state(label: &str) -> Option<AppState> {
+    let _ = tracing_subscriber::fmt::try_init();
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
@@ -987,4 +988,142 @@ async fn evaluate_with_unknown_bundle_key_is_not_found() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn download_report_in_markdown_and_html_names_the_real_citation() {
+    let Some(state) = test_state("report").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "report").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "nota.txt", "text": "Solicito acceso a mis datos.\n"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/assertions"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"confirmed": true}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evaluate"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let evaluation = body_json(response).await;
+    let evaluation_id = evaluation["evaluation_id"].as_i64().unwrap();
+
+    // Markdown
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=md"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/markdown; charset=utf-8"
+    );
+    assert!(response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains(".md"));
+    let md_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let md = String::from_utf8(md_bytes.to_vec()).unwrap();
+    assert!(md.contains("Ley 25.326"));
+    assert!(md.contains("Actionable"));
+
+    // HTML — a different actor must not be able to download it.
+    let other_token = new_owner_token(&state.pool, "report-other").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/evaluations/{evaluation_id}/report"
+                ))
+                .header("Authorization", format!("Bearer {other_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/evaluations/{evaluation_id}/report"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/html; charset=utf-8"
+    );
+    let html_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(html_bytes.to_vec()).unwrap();
+    assert!(html.contains("Ley 25.326"));
+    assert!(html.contains("<!doctype html>"));
 }

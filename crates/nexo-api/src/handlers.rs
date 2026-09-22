@@ -656,3 +656,90 @@ pub async fn list_evaluations(
             .collect(),
     ))
 }
+
+#[derive(Deserialize)]
+pub struct ReportQuery {
+    /// `md` (Markdown) or `html` — see `nexo-report`. Defaults to `html`.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+/// Downloads a human-readable report over an already-recorded evaluation.
+/// Per `nexo-report`'s own design (adapted from Anna's `zaynor` reporter):
+/// this handler renders what `evaluate_case` already sealed — it never
+/// re-evaluates, re-derives, or otherwise changes the decision, only
+/// projects the stored `result_payload` into a downloadable document.
+pub async fn download_report(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path((case_id, evaluation_id)): Path<(i64, i64)>,
+    axum::extract::Query(query): axum::extract::Query<ReportQuery>,
+) -> Result<Response, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+
+    let evaluation = repository::get_evaluation(
+        &state.pool,
+        case,
+        nexo_app::repository::ActionEvaluationRowId(evaluation_id),
+    )
+    .await
+    .map_err(internal("could not read evaluation"))?
+    .ok_or((StatusCode::NOT_FOUND, "evaluation not found"))?;
+
+    let entry = state
+        .bundles
+        .values()
+        .find(|entry| entry.seeded.policy_bundle.0 == evaluation.policy_bundle_id)
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "evaluation's policy bundle is no longer seeded",
+        ))?;
+
+    // The same canonical seal evaluate_case already computed and stored the
+    // evaluation under — recomputed here from the exact stored payload,
+    // never trusted from a caller-supplied value, so a report can never
+    // claim a digest that does not match what it actually renders.
+    let result_sha256 = result_digest(&evaluation.result_payload);
+
+    let input = nexo_report::ReportInput {
+        case_id,
+        evaluation_id,
+        bundle_key: entry.handle.key,
+        bundle_display_name: entry.handle.display_name,
+        generated_at: Utc::now(),
+        result: &evaluation.result_payload,
+        result_sha256: &result_sha256,
+    };
+
+    let format = query.format.as_deref().unwrap_or("html");
+    let (content_type, body, extension) = match format {
+        "md" | "markdown" => (
+            "text/markdown; charset=utf-8",
+            nexo_report::render_markdown(&input),
+            "md",
+        ),
+        "html" => (
+            "text/html; charset=utf-8",
+            nexo_report::render_html(&input),
+            "html",
+        ),
+        _ => {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "unknown report format (expected md or html)",
+            ))
+        }
+    };
+
+    let filename = format!("nexo-case-{case_id}-evaluation-{evaluation_id}.{extension}");
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", content_type)
+        .header(
+            "content-disposition",
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(axum::body::Body::from(body))
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build report response"))
+}

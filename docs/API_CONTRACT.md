@@ -235,7 +235,53 @@ equality afterward — never by reading a value out of the id.
   returned by any case-listing endpoint (none exists yet).
 - **Single-owner token model,** see Authentication above.
 
+## Report downloads
+
+`GET /v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=md|html`
+(default `html`) downloads a human-readable report over one already-recorded
+evaluation — `Content-Disposition: attachment`, so a browser saves it
+directly. Implemented in `crates/nexo-report`, whose design (not code) is
+adapted from Anna Tchijova's `zaynor/src/zaynor/report.py`
+(Apache-2.0) — confirmed by reading that file in full before writing this
+one. What was reused is the *idea*, not the implementation, because the two
+sealed shapes differ (ZAYNOR's `ZaynorAuthoritativeResult` carries
+per-finding MITRE technique IDs and an agent-pipeline table NEXO's
+`ActionEvaluation` has no equivalent of): a report is a read-only
+projection over an already-sealed value, never a second decision; every
+report names the exact digest of what it projects; and chain-of-custody
+carries two distinct hashes — `result_sha256` (bit-for-bit deterministic,
+recomputable by re-fetching `GET .../evaluations` and hashing) and
+`report_hash` (folds in when the report was rendered, so two reports of
+the same sealed evaluation stay distinguishable without implying the
+*evaluation* changed).
+
+PDF is not implemented this round — recorded as a real gap, not silently
+dropped: `render_markdown`/`render_html` are the two working formats;
+adding `render_pdf` (ZAYNOR uses `reportlab`; the pure-Rust equivalent
+would be `printpdf`, evaluated but not yet integrated) is next.
+
+**A real bug found and fixed while adding this feature, not before:**
+`nexo-app::upsert_digest` used `INSERT ... ON CONFLICT (algorithm, hex) DO
+UPDATE SET algorithm = EXCLUDED.algorithm` to fetch an existing digest's id
+on conflict — a common Postgres idiom, but `digests` rows are immutable by
+an *unconditional* trigger (`digest_rows_are_immutable_trigger`, added in
+an earlier round — unlike the `tools`/`tool_versions` identity triggers,
+it fires on any UPDATE, not only one that changes a value). Two evidence
+uploads that hash to the same digest — a realistic scenario, not a corner
+case — raced on this and one lost with a 500. Confirmed by induction: a
+new report-download test happened to reuse another test's exact evidence
+text, and the existing end-to-end test started failing intermittently
+under concurrent test execution; isolating with `tracing_subscriber` in
+the test binary showed the real Postgres error text
+("digest rows are immutable") rather than a vague timeout, which is what
+actually pointed at the trigger instead of resource contention. Fixed by
+rewriting `upsert_digest` to a `DO NOTHING` + fallback `SELECT`, which
+never issues an UPDATE against this table at all. Regression test:
+`concurrent_upsert_of_the_same_digest_never_fails` (8 concurrent upserts
+of byte-identical content, all resolving to the same row, none failing).
+
 ## Non-goals (this round)
 
 - A generic multi-bundle import/selection surface.
 - The web UI (Step 6).
+- PDF reports (see "Report downloads" above).

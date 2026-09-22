@@ -918,6 +918,7 @@ dependencies = [
  "nexo-integrity",
  "nexo-policy-ar",
  "nexo-policy-ar-digital-violence",
+ "nexo-report",
  "nexo-sandbox",
  "nexo-verifier",
  "serde",
@@ -997,6 +998,15 @@ version = "0.1.0"
 dependencies = [
  "nexo-core",
  "nexo-integrity",
+]
+
+[[package]]
+name = "nexo-report"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "nexo-integrity",
+ "serde_json",
 ]
 
 [[package]]

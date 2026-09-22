@@ -10,6 +10,7 @@ members = [
     "crates/nexo-policy-ar",
     "crates/nexo-policy-ar-digital-violence",
     "crates/nexo-api",
+    "crates/nexo-report",
     "crates/nexo-verifier",
 ]
 resolver = "3"

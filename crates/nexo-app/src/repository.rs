@@ -204,15 +204,38 @@ pub async fn case_owner(pool: &Pool, case: CaseRowId) -> Result<Option<ActorRowI
 // case-graph node payload references.
 // ---------------------------------------------------------------------
 
+/// `digests` rows are immutable by schema trigger
+/// (`digest_rows_are_immutable_trigger`, unconditional — unlike the
+/// `tools`/`tool_versions` identity triggers, it fires on *any* UPDATE, not
+/// only one that actually changes a value). An `ON CONFLICT DO UPDATE`
+/// upsert — even one that writes back the same value — is still an UPDATE
+/// statement and trips it. This function therefore never issues an UPDATE
+/// on this table at all: `DO NOTHING` on conflict, then a plain `SELECT`
+/// for the id when the insert did not happen. Concurrency-safe under
+/// Postgres's standard conflict-resolution semantics — two transactions
+/// racing to insert the same digest never both succeed, but the loser's
+/// fallback `SELECT` still finds the winner's committed row.
+///
+/// Regression test: two concurrent case-evidence uploads with byte-for-byte
+/// identical content (a real scenario, not a corner case — the same
+/// evidence file uploaded twice, or two different API requests that happen
+/// to hash to the same digest) must both succeed, never surface "digest
+/// rows are immutable" as a 500.
 pub async fn upsert_digest(
     tx: &mut Tx<'_>,
     algorithm: &str,
     hex: &str,
 ) -> Result<DigestRowId, RepoError> {
     let row = sqlx::query(
-        "INSERT INTO digests (algorithm, hex) VALUES ($1, $2)
-         ON CONFLICT (algorithm, hex) DO UPDATE SET algorithm = EXCLUDED.algorithm
-         RETURNING id",
+        "WITH inserted AS (
+             INSERT INTO digests (algorithm, hex) VALUES ($1, $2)
+             ON CONFLICT (algorithm, hex) DO NOTHING
+             RETURNING id
+         )
+         SELECT id FROM inserted
+         UNION ALL
+         SELECT id FROM digests WHERE algorithm = $1 AND hex = $2
+         LIMIT 1",
     )
     .bind(algorithm)
     .bind(hex)
@@ -893,6 +916,32 @@ pub async fn list_evaluations_for_case(
             result_payload: r.get("result_payload"),
         })
         .collect())
+}
+
+pub async fn get_evaluation(
+    pool: &Pool,
+    case: CaseRowId,
+    evaluation: ActionEvaluationRowId,
+) -> Result<Option<EvaluationRow>, RepoError> {
+    let row = sqlx::query(
+        "SELECT id, route_id, policy_bundle_id, evaluated_at, result_kind::text,
+                action_status::text, non_actionable_variant::text, result_payload
+         FROM action_evaluations WHERE case_id = $1 AND id = $2",
+    )
+    .bind(case.0)
+    .bind(evaluation.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| EvaluationRow {
+        id: r.get("id"),
+        route_id: r.get("route_id"),
+        policy_bundle_id: r.get("policy_bundle_id"),
+        evaluated_at: r.get("evaluated_at"),
+        result_kind: r.get("result_kind"),
+        action_status: r.get("action_status"),
+        non_actionable_variant: r.get("non_actionable_variant"),
+        result_payload: r.get("result_payload"),
+    }))
 }
 
 pub async fn evaluation_receipt_exists(

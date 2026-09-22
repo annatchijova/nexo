@@ -66,6 +66,10 @@ does not mean unauthenticated: the owner is recorded and checked on every
 command, so adding a second actor later is a matter of issuing a second
 identity, not rewriting the access model.
 
+An actor's `external_identity` is the authentication lookup key and is
+immutable after creation; identity rotation requires a separate audited
+account-management operation.
+
 The database also rejects reassignment of `owner_actor_id` after case
 creation; changing access requires an explicit future sharing model, not a
 mutation of the case root.

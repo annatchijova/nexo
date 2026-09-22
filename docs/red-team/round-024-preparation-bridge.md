@@ -385,6 +385,17 @@ writer could reassign ownership and thereby change who the application would
 authorize to read or mutate the entire case. The database now rejects owner
 changes after creation, with a regression test using a second actor.
 
+### RT-024-41 — Authentication identity could be rewritten directly
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** critical authorization boundary
+
+Bearer authentication resolves an actor by `external_identity`, but the
+identity column was mutable. A direct writer could therefore change which
+credential resolves to an actor or orphan the expected credential. The
+database now freezes external identities after creation, with a regression
+test for a direct rewrite.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

@@ -47,6 +47,20 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let Some(pool) = pool().await else { return };
     let actor = unique_actor(&pool, "seq").await;
     let other_actor = unique_actor(&pool, "other-owner").await;
+
+    let mut actor_update_tx = pool.begin().await.unwrap();
+    let actor_update = sqlx::query(
+        "UPDATE actors SET external_identity = 'tampered-identity' WHERE id = $1",
+    )
+    .bind(actor.0)
+    .execute(&mut *actor_update_tx)
+    .await;
+    assert!(
+        actor_update.is_err(),
+        "external actor identity must be immutable"
+    );
+    actor_update_tx.rollback().await.unwrap();
+
     let case = repository::create_case(&pool, actor).await.unwrap();
 
     let mut owner_update_tx = pool.begin().await.unwrap();

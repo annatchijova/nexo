@@ -13,6 +13,20 @@ create table actors (
     created_at          timestamptz not null default now()
 );
 
+create function actor_external_identity_is_immutable()
+returns trigger as $$
+begin
+    if new.external_identity is distinct from old.external_identity then
+        raise exception 'actor external identity is immutable';
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger actor_external_identity_is_immutable_trigger
+    before update on actors
+    for each row execute function actor_external_identity_is_immutable();
+
 create table cases (
     id                  bigint generated always as identity primary key,
     owner_actor_id      bigint not null references actors (id),

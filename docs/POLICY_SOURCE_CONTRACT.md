@@ -87,7 +87,8 @@ a new artifact/digest. It may supersede an older source in a later policy
 bundle but must not overwrite historical evaluations.
 
 The database enforces the digest equality above: a source row cannot bind a
-different digest to its captured artifact reference.
+different digest to its captured artifact reference. Source captures are
+append-only from creation, not only after a policy bundle is activated.
 
 ## Claim invariants
 

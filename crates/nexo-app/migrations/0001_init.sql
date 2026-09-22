@@ -570,6 +570,17 @@ create table normative_sources (
     provenance_id           bigint not null references provenance_records (id)
 );
 
+create function normative_sources_are_append_only()
+returns trigger as $$
+begin
+    raise exception 'normative source captures are append-only';
+end;
+$$ language plpgsql;
+
+create trigger normative_sources_are_append_only_trigger
+    before update or delete on normative_sources
+    for each row execute function normative_sources_are_append_only();
+
 create function normative_source_digest_matches_capture()
 returns trigger as $$
 begin

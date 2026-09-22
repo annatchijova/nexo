@@ -405,6 +405,17 @@ the case owner. A direct writer could therefore place another identity's
 statement inside the case. The database now requires the assertion actor to be
 the immutable case owner, with a regression test using a second actor.
 
+### RT-024-44 — Normative captures were mutable before activation
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-evidence boundary
+
+The source immutability trigger only protected captures once they were used by
+an activated claim. Before activation, a direct writer could change locator,
+retrieval, provenance, or authority fields while retaining the same source id.
+Captures are now append-only from insertion, with regression coverage for a
+source update.
+
 ### RT-024-41 — Authentication identity could be rewritten directly
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

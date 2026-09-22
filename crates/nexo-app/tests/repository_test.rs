@@ -147,6 +147,33 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assert!(digest_update.is_err(), "digest identities must be immutable");
     digest_update_tx.rollback().await.unwrap();
 
+    let mut provenance_insert_tx = pool.begin().await.unwrap();
+    let immutable_provenance = repository::insert_provenance(
+        &mut provenance_insert_tx,
+        case,
+        "user_provided",
+        Some(actor),
+        Utc::now(),
+        json!({"immutable": true}),
+    )
+    .await
+    .unwrap();
+    provenance_insert_tx.commit().await.unwrap();
+
+    let mut provenance_update_tx = pool.begin().await.unwrap();
+    let provenance_update = sqlx::query(
+        "UPDATE provenance_records SET detail = '{\"tampered\":true}'::jsonb
+         WHERE id = $1",
+    )
+    .bind(immutable_provenance.0)
+    .execute(&mut *provenance_update_tx)
+    .await;
+    assert!(
+        provenance_update.is_err(),
+        "provenance records must be immutable"
+    );
+    provenance_update_tx.rollback().await.unwrap();
+
     let mut mismatched_payload_tx = pool.begin().await.unwrap();
     let digest = repository::upsert_digest(&mut mismatched_payload_tx, "sha256", &"aa".repeat(32))
         .await

@@ -168,7 +168,7 @@ gives:
   `ArtifactId`/`DigestId`/`ProvenanceId`: content digest, declared (untrusted)
   metadata, and acquisition provenance, kept separate from the sandbox
   worker's typed extraction result. Digest identities are immutable after
-  insertion.
+  insertion, and provenance records are immutable after insertion.
 - **`tools`, `tool_versions`** — `UNIQUE (tool_id, version)`, mirroring
   `ToolVersion`'s "version zero is unrepresentable" rule: version is
   `NOT NULL` and constrained `> 0`.

@@ -334,6 +334,16 @@ identity while its assertion or provenance changed underneath it. The graph
 tables are now append-only; corrections require new nodes or edges, with a
 regression test against a user-assertion payload update.
 
+### RT-024-36 — Provenance records remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high evidence-integrity boundary
+
+Artifacts, sources, and preparations could retain a provenance foreign key
+while a direct writer changed the acquisition channel, actor, detail, or
+recorded time behind that identity. Provenance rows are now append-only, with
+regression coverage for a direct detail update.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

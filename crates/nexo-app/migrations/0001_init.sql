@@ -65,6 +65,17 @@ create table provenance_records (
     detail              jsonb not null default '{}'::jsonb
 );
 
+create function provenance_records_are_immutable()
+returns trigger as $$
+begin
+    raise exception 'provenance records are immutable';
+end;
+$$ language plpgsql;
+
+create trigger provenance_records_are_immutable_trigger
+    before update or delete on provenance_records
+    for each row execute function provenance_records_are_immutable();
+
 create index provenance_records_case_id_idx on provenance_records (case_id);
 
 create type sandbox_status as enum (

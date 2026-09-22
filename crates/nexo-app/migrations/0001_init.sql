@@ -337,7 +337,8 @@ create table derived_fact_nodes (
 );
 
 -- Ordered inputs; row-count bound (MAX_DERIVATION_INPUTS = 64) is enforced
--- at the application layer since a bare CHECK cannot count sibling rows.
+-- by the deferred constraint trigger below since a bare CHECK cannot count
+-- sibling rows.
 create table derived_fact_inputs (
     case_id             bigint not null,
     node_id             bigint not null,
@@ -359,7 +360,8 @@ create table inference_nodes (
     foreign key (case_id, node_id) references case_nodes (case_id, node_id)
 );
 
--- MAX_INFERENCE_INPUTS = 64, enforced at the application layer.
+-- MAX_INFERENCE_INPUTS = 64, enforced by the deferred constraint trigger
+-- below.
 create table inference_inputs (
     case_id             bigint not null,
     node_id             bigint not null,

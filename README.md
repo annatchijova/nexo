@@ -73,6 +73,23 @@ There is no “happy-path-only” milestone. Each layer must state its threat mo
 
 Stage 0 foundation is complete. The project is in Round 014 integration: the evidence graph, policy bundle boundaries, jurisdictional evaluator, and relational negative evidence are implemented and adversarially tested. Argentina and United States policy semantics remain bundle-specific; NEXO does not claim universal legal correctness or provide legal advice.
 
+### Web demo
+
+The current frontend is published at [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app).
+
+- English is the default language; use the `ES`/`EN` buttons to switch the interface.
+- Dark mode is the default; the theme button enables light mode.
+- The interface stores the selected language, theme, API base, bearer token,
+  and case id in browser local storage.
+- Set `VITE_NEXO_API_BASE` in Vercel, or enter the API base in the UI, once
+  the backend is deployed.
+
+The Vercel project currently hosts the UI only. Case creation, evidence
+ingestion, evaluation, preparation, export, artifact downloads, and hash
+verification require the NEXO API, PostgreSQL, persistent object storage, and
+the Docker extractor sandbox. The AWS deployment preparation is documented in
+[`deploy/aws/README.md`](deploy/aws/README.md).
+
 ## License
 
 Apache License 2.0. See [`LICENSE`](LICENSE).

@@ -146,8 +146,8 @@ function render(): void {
     <section class="workspace-grid">
       <div class="column"><section class="panel"><div class="section-heading"><div><span class="eyebrow">CASE</span><h2>${state.caseId ? `Case ${state.caseId}` : "Start a case"}</h2></div><button id="new-case" class="secondary">New case</button></div><div id="case-feedback" class="feedback" aria-live="polite"></div>${renderTimeline()}</section>
       <section class="panel"><span class="eyebrow">EVIDENCE INTAKE</span><h2>Add what happened</h2><form id="evidence-form"><label>Filename <input id="filename" placeholder="message.txt" /></label><label>Plain-text evidence <textarea id="evidence-text" rows="7" placeholder="Paste the relevant evidence here"></textarea></label><button type="submit">Send to sandbox</button></form><p class="muted small">The API stores the original bytes and runs extraction in the sandbox. Rejections remain visible.</p></section></div>
-      <div class="column"><section class="panel"><span class="eyebrow">OWNER ASSERTION</span><h2>Confirm a fact</h2><p class="muted">A confirmation is a user assertion, not an extracted observation.</p><button id="confirm-assertion" class="secondary">Record confirmed assertion</button></section>
-      <section class="panel"><div class="section-heading"><div><span class="eyebrow">EVALUATION</span><h2>Why is this shown?</h2></div><button id="evaluate">Evaluate case</button></div><div id="evaluation-output">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">PREPARATION / EXPORT</span><h3>Keep the proof portable</h3>${renderPreparation()}</div></section></div>
+      <div class="column"><section class="panel"><span class="eyebrow">OWNER ASSERTION</span><h2>Confirm a fact</h2><p class="muted">A confirmation is a user assertion, not an extracted observation.</p><button id="confirm-assertion" class="secondary" type="button">Record confirmed assertion</button></section>
+      <section class="panel"><div class="section-heading"><div><span class="eyebrow">EVALUATION</span><h2>Why is this shown?</h2></div><button id="evaluate" type="button">Evaluate case</button></div><div id="evaluation-output" aria-live="polite">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">PREPARATION / EXPORT</span><h3>Keep the proof portable</h3>${renderPreparation()}</div></section></div>
     </section><footer><span>NEXO stops at preparation. A human remains the actor for any external legal act.</span></footer>
   </main>`;
   bindEvents();
@@ -155,7 +155,25 @@ function render(): void {
 
 function feedback(message: string, error = false): void {
   const target = document.querySelector<HTMLDivElement>("#case-feedback");
-  if (target) { target.textContent = message; target.className = `feedback ${error ? "error" : "success"}`; }
+  if (target) {
+    target.textContent = message;
+    target.className = `feedback ${error ? "error" : "success"}`;
+    target.setAttribute("role", error ? "alert" : "status");
+  }
+}
+
+async function whileBusy<T>(button: HTMLButtonElement, label: string, task: () => Promise<T>): Promise<T> {
+  const originalLabel = button.textContent ?? "Working";
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = label;
+  try {
+    return await task();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = originalLabel;
+  }
 }
 
 async function loadCase(): Promise<void> {
@@ -179,38 +197,54 @@ function bindEvents(): void {
     localStorage.setItem("nexo-api-base", state.apiBase); localStorage.setItem("nexo-token", state.token); feedback("Connection saved.");
   });
   document.querySelector<HTMLButtonElement>("#new-case")?.addEventListener("click", async () => {
-    try { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; state.evaluationId = null; state.preparation = null; render(); }
+    const button = document.querySelector<HTMLButtonElement>("#new-case");
+    if (!button) return;
+    try { await whileBusy(button, "Creating…", async () => { const created = await request<{ case_id: number }>("/v1/cases", { method: "POST" }); state.caseId = created.case_id; localStorage.setItem("nexo-case-id", String(state.caseId)); state.detail = { case_id: state.caseId, nodes: [] }; state.evaluation = null; state.evaluationId = null; state.preparation = null; render(); }); }
     catch (error) { feedback(error instanceof Error ? error.message : "Could not create the case.", true); }
   });
   document.querySelector<HTMLFormElement>("#evidence-form")?.addEventListener("submit", async (event) => {
     event.preventDefault(); if (!state.caseId) return feedback("Create a case first.", true);
     const text = document.querySelector<HTMLTextAreaElement>("#evidence-text")?.value ?? "";
-    try { await request(`/v1/cases/${state.caseId}/evidence`, { method: "POST", body: JSON.stringify({ filename: document.querySelector<HTMLInputElement>("#filename")?.value || null, text }) }); await loadCase(); feedback("Evidence recorded; extraction result is visible in the case timeline."); }
+    const button = document.querySelector<HTMLButtonElement>("#evidence-form button[type=submit]");
+    if (!button) return;
+    try { await whileBusy(button, "Extracting…", async () => { await request(`/v1/cases/${state.caseId}/evidence`, { method: "POST", body: JSON.stringify({ filename: document.querySelector<HTMLInputElement>("#filename")?.value || null, text }) }); await loadCase(); }); feedback("Evidence recorded; extraction result is visible in the case timeline."); }
     catch (error) { feedback(error instanceof Error ? error.message : "Evidence intake failed.", true); }
   });
   document.querySelector<HTMLButtonElement>("#confirm-assertion")?.addEventListener("click", async () => {
     if (!state.caseId) return feedback("Create a case first.", true);
-    try { await request(`/v1/cases/${state.caseId}/assertions`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); await loadCase(); feedback("Confirmed assertion recorded."); }
+    const button = document.querySelector<HTMLButtonElement>("#confirm-assertion");
+    if (!button) return;
+    try { await whileBusy(button, "Recording…", async () => { await request(`/v1/cases/${state.caseId}/assertions`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); await loadCase(); }); feedback("Confirmed assertion recorded."); }
     catch (error) { feedback(error instanceof Error ? error.message : "Could not record assertion.", true); }
   });
   document.querySelector<HTMLButtonElement>("#evaluate")?.addEventListener("click", async () => {
     if (!state.caseId) return feedback("Create a case first.", true);
-    try { const response = await request<{ evaluation_id: number; result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluationId = response.evaluation_id; state.evaluation = response.result; state.preparation = null; render(); }
+    const button = document.querySelector<HTMLButtonElement>("#evaluate");
+    if (!button) return;
+    try { await whileBusy(button, "Evaluating…", async () => { const response = await request<{ evaluation_id: number; result: Evaluation }>(`/v1/cases/${state.caseId}/evaluate`, { method: "POST" }); state.evaluationId = response.evaluation_id; state.evaluation = response.result; state.preparation = null; render(); }); }
     catch (error) { feedback(error instanceof Error ? error.message : "Evaluation failed.", true); }
   });
   document.querySelector<HTMLButtonElement>("#prepare")?.addEventListener("click", async () => {
     if (!state.caseId || !state.evaluationId) return feedback("Run an available evaluation first.", true);
+    const button = document.querySelector<HTMLButtonElement>("#prepare");
+    if (!button) return;
     try {
-      state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations`, { method: "POST", body: JSON.stringify({ evaluation_id: state.evaluationId, kind: "draft_request" }) });
-      render();
+      await whileBusy(button, "Preparing…", async () => {
+        state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations`, { method: "POST", body: JSON.stringify({ evaluation_id: state.evaluationId, kind: "draft_request" }) });
+        render();
+      });
       feedback("Local preparation is ready; nothing was sent externally.");
     } catch (error) { feedback(error instanceof Error ? error.message : "Preparation failed.", true); }
   });
   document.querySelector<HTMLButtonElement>("#export")?.addEventListener("click", async () => {
     if (!state.caseId || !state.preparation) return;
+    const button = document.querySelector<HTMLButtonElement>("#export");
+    if (!button) return;
     try {
-      state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations/${state.preparation.preparation_id}/export`, { method: "POST" });
-      render();
+      await whileBusy(button, "Exporting…", async () => {
+        state.preparation = await request<Preparation>(`/v1/cases/${state.caseId}/preparations/${state.preparation?.preparation_id}/export`, { method: "POST" });
+        render();
+      });
       feedback("Export verified and available for download; no external act was performed.");
     } catch (error) { feedback(error instanceof Error ? error.message : "Export failed verification.", true); }
   });

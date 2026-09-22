@@ -2,6 +2,7 @@
 /web/node_modules/
 /web/dist/
 /web/.next/
+.devpost-hackathon-state.json
 .env
 .env.*
 !.env.example

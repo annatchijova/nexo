@@ -275,7 +275,8 @@ create table policy_bundle_activations (
     id                  bigint generated always as identity primary key,
     policy_bundle_id    bigint not null references policy_bundles (id),
     activated_at        timestamptz not null default now(),
-    activated_by_actor_id bigint not null references actors (id)
+    activated_by_actor_id bigint not null references actors (id),
+    unique (policy_bundle_id)
 );
 
 create index policy_bundle_activations_bundle_idx

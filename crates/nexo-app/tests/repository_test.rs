@@ -583,6 +583,22 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     activation_delete_tx.rollback().await.unwrap();
 
+    let mut activation_duplicate_tx = pool.begin().await.unwrap();
+    let activation_duplicate = sqlx::query(
+        "INSERT INTO policy_bundle_activations
+            (policy_bundle_id, activated_by_actor_id)
+         VALUES ($1, $2)",
+    )
+    .bind(bundle.0)
+    .bind(actor.0)
+    .execute(&mut *activation_duplicate_tx)
+    .await;
+    assert!(
+        activation_duplicate.is_err(),
+        "a policy bundle must not have duplicate activation events"
+    );
+    activation_duplicate_tx.rollback().await.unwrap();
+
     let mut activated_route_update_tx = pool.begin().await.unwrap();
     let activated_route_update = sqlx::query(
         "UPDATE action_routes SET title = 'tampered route' WHERE id = $1",

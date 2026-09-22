@@ -278,6 +278,9 @@ activation that made a bundle immutable, then mutate the historical bundle,
 or rewrite activation metadata in place. The new trigger rejects both update
 and delete, with regression coverage for each operation.
 
+The table also now enforces one activation event per bundle, so a direct replay
+cannot create duplicate history for the same immutable policy identity.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

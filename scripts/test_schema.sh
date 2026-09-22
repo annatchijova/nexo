@@ -67,8 +67,8 @@ insert into normative_sources (authority_kind, acquisition_channel, issuer, loca
   values ('primary_official', 'web_fetch', 'Boletin Oficial', 'https://example.gov.ar/ley', now(), 2, 2, 2);
 insert into digests (algorithm, hex) values ('sha256', repeat('ef', 32));
 insert into provenance_records (case_id, channel, actor_id, recorded_at) values (1, 'imported_bundle', 1, now());
-insert into policy_bundles (jurisdiction, schema_version, policy_version, validity_from, captured_artifact_digest_id, digest_id, provenance_id)
-  values ('AR', 1, '2026.1', '2026-01-01', 3, 3, 3);
+insert into policy_bundles (jurisdiction, bundle_key, schema_version, policy_version, validity_from, captured_artifact_digest_id, digest_id, provenance_id)
+  values ('AR', 'ley-test', 1, '2026.1', '2026-01-01', 3, 3, 3);
 insert into normative_claims (policy_bundle_id, proposition, jurisdiction, validity_from)
   values (1, 'right to request data access', 'AR', '2026-01-01');
 insert into normative_claim_sources (claim_id, source_id, role, ordinal) values (1, 1, 'primary', 0);

@@ -690,6 +690,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let bundle = repository::insert_policy_bundle(
         &mut tx,
         "AR",
+        "ar-test-1",
         1,
         "ar-test-1",
         chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
@@ -742,6 +743,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let bundle_two = repository::insert_policy_bundle(
         &mut tx,
         "AR",
+        "ar-test-2",
         1,
         "ar-test-2",
         chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
@@ -822,6 +824,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         let bundle = repository::insert_policy_bundle(
             &mut tx,
             "AR",
+            "ar-empty-route",
             1,
             "ar-empty-route",
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
@@ -942,6 +945,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         let bundle = repository::insert_policy_bundle(
             &mut tx,
             "AR",
+            "ar-server-timestamp",
             1,
             "ar-server-timestamp",
             chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(),
@@ -1046,6 +1050,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let mismatched_bundle = repository::insert_policy_bundle(
         &mut mismatched_bundle_tx,
         "AR",
+        "ar-test-mismatched-digest",
         1,
         "ar-test-mismatched-digest",
         chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
@@ -1127,6 +1132,7 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     let next_bundle = repository::insert_policy_bundle(
         &mut next_policy_tx,
         "AR",
+        "ar-test-next",
         1,
         "ar-test-next",
         chrono::NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),

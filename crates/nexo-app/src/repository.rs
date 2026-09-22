@@ -502,6 +502,7 @@ fn case_node_summaries(rows: Vec<sqlx::postgres::PgRow>) -> Vec<CaseNodeSummary>
 pub async fn insert_policy_bundle(
     tx: &mut Tx<'_>,
     jurisdiction: &str,
+    bundle_key: &str,
     schema_version: i16,
     policy_version: &str,
     validity_from: NaiveDate,
@@ -512,11 +513,12 @@ pub async fn insert_policy_bundle(
 ) -> Result<PolicyBundleRowId, RepoError> {
     let row = sqlx::query(
         "INSERT INTO policy_bundles
-            (jurisdiction, schema_version, policy_version, validity_from, validity_to,
+            (jurisdiction, bundle_key, schema_version, policy_version, validity_from, validity_to,
              captured_artifact_digest_id, digest_id, provenance_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
     )
     .bind(jurisdiction)
+    .bind(bundle_key)
     .bind(schema_version)
     .bind(policy_version)
     .bind(validity_from)
@@ -559,6 +561,13 @@ pub async fn activate_policy_bundle(
     Ok(())
 }
 
+/// Serializes activation/currency decisions for one legal instrument
+/// ("bundle_key" — e.g. "ley-25326"), not one jurisdiction: a jurisdiction
+/// can have several independently versioned bundles active at once, and an
+/// activation of one must never contend on the same lock as, or appear to
+/// invalidate, an unrelated bundle that merely shares a jurisdiction
+/// string. See the `bundle_key` column comment in
+/// `migrations/0001_init.sql`.
 pub async fn lock_policy_jurisdiction(
     tx: &mut Tx<'_>,
     bundle: PolicyBundleRowId,
@@ -566,7 +575,7 @@ pub async fn lock_policy_jurisdiction(
     sqlx::query(
         "SELECT pg_advisory_xact_lock(
              hashtextextended(
-                 'nexo-policy-activation:' || jurisdiction,
+                 'nexo-policy-activation:' || bundle_key,
                  0
              )
          )
@@ -588,8 +597,8 @@ pub async fn current_policy_bundle_id(
          FROM policy_bundle_activations activation
          JOIN policy_bundles active_bundle
            ON active_bundle.id = activation.policy_bundle_id
-         WHERE active_bundle.jurisdiction = (
-             SELECT jurisdiction FROM policy_bundles WHERE id = $1
+         WHERE active_bundle.bundle_key = (
+             SELECT bundle_key FROM policy_bundles WHERE id = $1
          )
          ORDER BY activation.activated_at DESC, activation.id DESC
          LIMIT 1",

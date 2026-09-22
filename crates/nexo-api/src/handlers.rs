@@ -30,6 +30,29 @@ pub struct CaseResponse {
     pub case_id: i64,
 }
 
+#[derive(Serialize)]
+pub struct BundleSummary {
+    pub key: &'static str,
+    pub display_name: &'static str,
+}
+
+/// Unauthenticated on purpose: this names only which legal routes exist,
+/// the same information `docs/API_CONTRACT.md` already documents, not case
+/// data. Lets a client (or a curious `curl`) discover valid `?bundle=`
+/// values without needing a token first.
+pub async fn list_bundles(State(state): State<AppState>) -> Json<Vec<BundleSummary>> {
+    let mut summaries: Vec<BundleSummary> = state
+        .bundles
+        .values()
+        .map(|entry| BundleSummary {
+            key: entry.handle.key,
+            display_name: entry.handle.display_name,
+        })
+        .collect();
+    summaries.sort_by_key(|summary| summary.key);
+    Json(summaries)
+}
+
 pub async fn create_case(
     State(state): State<AppState>,
     AuthenticatedActor(actor): AuthenticatedActor,
@@ -195,13 +218,28 @@ pub async fn prepare_case(
         ));
     }
 
-    let (projection, resolver, _) = crate::projection::build_projection(
+    // The evaluation being prepared pins which bundle produced it — look
+    // that up from its receipt binding rather than assuming a fixed
+    // bundle, so preparation works for whichever bundle the case was
+    // actually evaluated against.
+    let binding = repository::find_evaluation_receipt_binding(
         &state.pool,
         case,
-        &state.fixture,
+        nexo_app::repository::ActionEvaluationRowId(request.evaluation_id),
     )
     .await
-    .map_err(internal("could not build preparation projection"))?;
+    .map_err(internal("could not look up evaluation receipt"))?
+    .ok_or((StatusCode::CONFLICT, "evaluation is stale or unsupported"))?;
+    let entry = state
+        .bundles
+        .values()
+        .find(|entry| entry.seeded.policy_bundle.0 == binding.policy_bundle_id)
+        .ok_or((StatusCode::CONFLICT, "evaluation's policy bundle is no longer seeded"))?;
+
+    let (projection, resolver, _) =
+        crate::projection::build_projection(&state.pool, case, &entry.handle)
+            .await
+            .map_err(internal("could not build preparation projection"))?;
     let today = Utc::now().date_naive();
     let reference_date = nexo_core::CivilDate::try_new(
         today.year(),
@@ -211,16 +249,16 @@ pub async fn prepare_case(
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "invalid reference date"))?;
     let evaluation = nexo_core::evaluate(
         &projection,
-        &state.fixture.bundle,
-        &state.fixture.context,
-        &state.fixture.route,
+        &entry.handle.bundle,
+        &entry.handle.context,
+        &entry.handle.route,
         reference_date,
     );
     let action = match &evaluation {
         nexo_core::ActionEvaluation::Actionable(action) if action.is_available() => action.clone(),
         _ => return Err((StatusCode::CONFLICT, "evaluation is not currently preparable")),
     };
-    let rendered = explain::render(&evaluation, &resolver, &state.fixture);
+    let rendered = explain::render(&evaluation, &resolver, &entry.handle.citations);
     let bytes = serde_json::to_vec(&rendered)
         .map_err(internal("could not render preparation material"))?;
     let preparation_id = crate::preparation::persist_prepared_material_with_provenance(
@@ -410,13 +448,29 @@ pub async fn read_export_artifact(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build artifact response"))
 }
 
+#[derive(Deserialize)]
+pub struct EvaluateQuery {
+    /// Which seeded policy bundle to evaluate against — see `GET
+    /// /v1/bundles` for the available keys. Defaults to
+    /// `nexo_api::DEFAULT_BUNDLE_KEY` (Ley 25.326) so every endpoint that
+    /// existed before bundle selection did keeps working unchanged.
+    #[serde(default)]
+    pub bundle: Option<String>,
+}
+
 pub async fn evaluate_case(
     State(state): State<AppState>,
     AuthenticatedActor(actor): AuthenticatedActor,
     Path(case_id): Path<i64>,
+    axum::extract::Query(query): axum::extract::Query<EvaluateQuery>,
 ) -> Result<Json<EvaluateResponse>, ApiError> {
     let case = CaseRowId(case_id);
     authorize_case(&state.pool, case, actor).await?;
+
+    let bundle_key = query.bundle.as_deref().unwrap_or(crate::DEFAULT_BUNDLE_KEY);
+    let entry = state
+        .bundle(bundle_key)
+        .ok_or((StatusCode::NOT_FOUND, "unknown policy bundle"))?;
 
     let mut tx = state
         .pool
@@ -427,7 +481,7 @@ pub async fn evaluate_case(
         .await
         .map_err(internal("could not lock case for evaluation"))?;
     let (projection, resolver, manifest) =
-        match projection::build_projection_in_tx(&mut tx, case, &state.fixture).await {
+        match projection::build_projection_in_tx(&mut tx, case, &entry.handle).await {
             Ok(result) => result,
             Err(projection::ProjectionError::NoFactualSupportYet) => {
                 return Err((
@@ -454,13 +508,13 @@ pub async fn evaluate_case(
     .expect("chrono's own calendar validation matches CivilDate's");
     let result = evaluate(
         &projection,
-        &state.fixture.bundle,
-        &state.fixture.context,
-        &state.fixture.route,
+        &entry.handle.bundle,
+        &entry.handle.context,
+        &entry.handle.route,
         reference_date,
     );
 
-    let rendered = explain::render(&result, &resolver, &state.fixture);
+    let rendered = explain::render(&result, &resolver, &entry.handle.citations);
     let result_digest = result_digest(&rendered);
     let input_manifest_digest = projection::input_manifest_digest(&manifest);
     let action_digest = match &result {
@@ -475,8 +529,8 @@ pub async fn evaluate_case(
     let evaluation = repository::insert_action_evaluation(
         &mut tx,
         case,
-        state.seeded.action_route,
-        state.seeded.policy_bundle,
+        entry.seeded.action_route,
+        entry.seeded.policy_bundle,
         env!("CARGO_PKG_VERSION"),
         result_kind,
         action_status,
@@ -505,8 +559,8 @@ pub async fn evaluate_case(
             &mut tx,
             evaluation,
             case,
-            state.seeded.action_route,
-            state.seeded.policy_bundle,
+            entry.seeded.action_route,
+            entry.seeded.policy_bundle,
             input_manifest_digest,
             result_digest,
             action_digest,

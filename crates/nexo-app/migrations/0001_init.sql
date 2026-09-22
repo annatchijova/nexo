@@ -673,6 +673,15 @@ create trigger normative_source_digest_matches_capture_trigger
 create table policy_bundles (
     id                      bigint generated always as identity primary key,
     jurisdiction            text not null,
+    -- Which legal instrument this bundle is a version of (e.g.
+    -- "ley-25326", "ley-27736") — distinct from jurisdiction, because a
+    -- jurisdiction can have several independently versioned bundles active
+    -- at once (Argentina has both a data-access bundle and a digital-
+    -- violence bundle, neither superseding the other). "current" checks
+    -- below are scoped by this column, not by jurisdiction: an activation
+    -- of one legal instrument must never appear to invalidate another
+    -- merely because they share a jurisdiction.
+    bundle_key              text not null check (bundle_key <> ''),
     schema_version          smallint not null check (schema_version >= 0),
     policy_version           text not null check (policy_version <> ''),
     validity_from            date not null,
@@ -700,6 +709,7 @@ create trigger policy_bundle_digest_matches_capture_trigger
     for each row execute function policy_bundle_digest_matches_capture();
 
 create index policy_bundles_jurisdiction_idx on policy_bundles (jurisdiction);
+create index policy_bundles_bundle_key_idx on policy_bundles (bundle_key);
 
 -- Append-only: a bundle is immutable once activated, and history is never
 -- overwritten with a "current pointer" (transaction contract item 4).

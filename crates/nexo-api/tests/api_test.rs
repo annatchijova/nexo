@@ -17,7 +17,9 @@ use std::fs;
 use std::sync::Arc;
 use tower::ServiceExt;
 
-use nexo_api::{router, AppState};
+use std::collections::HashMap;
+
+use nexo_api::{router, AppState, BundleEntry};
 use nexo_app::object_store::FilesystemObjectStore;
 use nexo_app::repository;
 
@@ -55,13 +57,14 @@ async fn test_state(label: &str) -> Option<AppState> {
         .await
         .expect("create actor");
 
-    let fixture = nexo_policy_ar::build();
-    let seeded = nexo_api::seed::seed_ar_bundle(&pool, &fixture, owner)
+    let ley_25326_fixture = nexo_policy_ar::build();
+    let (ley_25326_handle, seeded) =
+        nexo_api::seed::seed_ley_25326(&pool, &ley_25326_fixture, owner)
+            .await
+            .expect("seed Ley 25.326 bundle");
+    let (_, reseeded) = nexo_api::seed::seed_ley_25326(&pool, &ley_25326_fixture, owner)
         .await
-        .expect("seed AR bundle");
-    let reseeded = nexo_api::seed::seed_ar_bundle(&pool, &fixture, owner)
-        .await
-        .expect("reseed AR bundle idempotently");
+        .expect("reseed Ley 25.326 bundle idempotently");
     assert_eq!(reseeded.policy_bundle, seeded.policy_bundle);
     assert_eq!(reseeded.action_route, seeded.action_route);
     let activation_count: i64 = sqlx::query_scalar(
@@ -73,6 +76,12 @@ async fn test_state(label: &str) -> Option<AppState> {
     .unwrap();
     assert_eq!(activation_count, 1);
 
+    let ley_27736_fixture = nexo_policy_ar_digital_violence::build();
+    let (ley_27736_handle, ley_27736_seeded) =
+        nexo_api::seed::seed_ley_27736(&pool, &ley_27736_fixture, owner)
+            .await
+            .expect("seed Ley 27.736 bundle");
+
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let store = FilesystemObjectStore::open(temp_dir.path()).expect("open object store");
     std::mem::forget(temp_dir); // keep the directory alive for the test's duration
@@ -80,11 +89,26 @@ async fn test_state(label: &str) -> Option<AppState> {
     let export_root_path = export_root.path().to_path_buf();
     std::mem::forget(export_root);
 
+    let mut bundles = HashMap::new();
+    bundles.insert(
+        ley_25326_handle.key,
+        BundleEntry {
+            handle: ley_25326_handle,
+            seeded,
+        },
+    );
+    bundles.insert(
+        ley_27736_handle.key,
+        BundleEntry {
+            handle: ley_27736_handle,
+            seeded: ley_27736_seeded,
+        },
+    );
+
     Some(AppState {
         pool,
         store: Arc::new(store),
-        fixture: Arc::new(fixture),
-        seeded,
+        bundles: Arc::new(bundles),
         export_root: export_root_path,
     })
 }
@@ -237,10 +261,11 @@ async fn full_flow_evidence_to_actionable_citation() {
         .await
         .unwrap()
         .unwrap();
+    let default_entry = state.bundle(nexo_api::DEFAULT_BUNDLE_KEY).unwrap();
     let (projection, _, _) = nexo_api::projection::build_projection(
         &state.pool,
         repository::CaseRowId(case_id),
-        &state.fixture,
+        &default_entry.handle,
     )
     .await
     .unwrap();
@@ -253,9 +278,9 @@ async fn full_flow_evidence_to_actionable_citation() {
     .unwrap();
     let action = match nexo_core::evaluate(
         &projection,
-        &state.fixture.bundle,
-        &state.fixture.context,
-        &state.fixture.route,
+        &default_entry.handle.bundle,
+        &default_entry.handle.context,
+        &default_entry.handle.route,
         reference_date,
     ) {
         nexo_core::ActionEvaluation::Actionable(action) => action,
@@ -808,4 +833,158 @@ async fn invalid_utf8_evidence_is_a_typed_rejection_not_a_crash() {
     let evidence = body_json(response).await;
     assert_eq!(evidence["observation_count"], 0);
     assert!(evidence["rejection_reason"].is_null());
+}
+
+#[tokio::test]
+async fn list_bundles_names_both_seeded_bundles() {
+    let Some(state) = test_state("list-bundles").await else {
+        return;
+    };
+    let app = router(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/bundles")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bundles = body_json(response).await;
+    let keys: Vec<&str> = bundles
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, vec!["ley-25326", "ley-27736"]);
+}
+
+#[tokio::test]
+async fn ley_27736_bundle_is_actionable_once_content_is_identified() {
+    let Some(state) = test_state("ley27736").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "ley27736").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    // The digital-violence bundle's mandatory requirement is satisfied by
+    // an Artifact node (the content/URL identified), not a confirmed
+    // assertion — evidence alone must be enough here.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "filename": "captura.txt",
+                        "text": "Publicaron contenido intimo mio sin consentimiento en esta URL: https://example.com/x\n"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Evaluating against the *default* bundle (Ley 25.326) with no
+    // confirmed assertion must be InsufficientFacts — proves bundle
+    // selection actually changes which route is evaluated, not just which
+    // citations are attached to the same result.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evaluate"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let default_result = body_json(response).await;
+    assert_eq!(default_result["result"]["kind"], "non_actionable");
+    assert_eq!(default_result["result"]["variant"], "insufficient_facts");
+
+    // Evaluating against ley-27736 with the same case must be Actionable.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evaluate?bundle=ley-27736"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let evaluation = body_json(response).await;
+    let result = &evaluation["result"];
+    assert_eq!(result["kind"], "actionable");
+    assert_eq!(result["status"], "supported");
+    let legal_support = result["legal_support"].as_array().unwrap();
+    assert_eq!(legal_support.len(), 2);
+    for citation in legal_support {
+        assert!(citation["proposition"].as_str().unwrap().contains("27.736"));
+    }
+}
+
+#[tokio::test]
+async fn evaluate_with_unknown_bundle_key_is_not_found() {
+    let Some(state) = test_state("unknown-bundle").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "unknown-bundle").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evaluate?bundle=does-not-exist"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

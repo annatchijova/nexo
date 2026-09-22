@@ -6,6 +6,7 @@
 //! computed.
 
 pub mod auth;
+pub mod bundle;
 pub mod evidence;
 pub mod explain;
 pub mod handlers;
@@ -13,6 +14,7 @@ pub mod preparation;
 pub mod projection;
 pub mod seed;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,20 +23,36 @@ use axum::Router;
 use nexo_app::object_store::FilesystemObjectStore;
 use nexo_app::repository::Pool;
 
+use bundle::PolicyBundleHandle;
 use seed::SeededArBundle;
+
+/// The bundle every existing endpoint and test used before bundle
+/// selection existed. Kept as the default so `?bundle=` stays optional.
+pub const DEFAULT_BUNDLE_KEY: &str = "ley-25326";
+
+pub struct BundleEntry {
+    pub handle: PolicyBundleHandle,
+    pub seeded: SeededArBundle,
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Pool,
     pub store: Arc<FilesystemObjectStore>,
-    pub fixture: Arc<nexo_policy_ar::Fixture>,
-    pub seeded: SeededArBundle,
+    pub bundles: Arc<HashMap<&'static str, BundleEntry>>,
     pub export_root: PathBuf,
+}
+
+impl AppState {
+    pub fn bundle(&self, key: &str) -> Option<&BundleEntry> {
+        self.bundles.get(key)
+    }
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/v1/bundles", get(handlers::list_bundles))
         .route("/v1/cases", post(handlers::create_case))
         .route("/v1/cases/{case_id}", get(handlers::read_case))
         .route(

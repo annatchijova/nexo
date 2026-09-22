@@ -20,8 +20,9 @@ use nexo_core::{
     InsufficientFacts, NodeId, NonActionable, NormativeClaimId, OutOfJurisdiction,
     PolicyNotCurrent,
 };
-use nexo_policy_ar::Fixture;
 use serde_json::{json, Value};
+
+use crate::bundle::ClaimCitation;
 
 /// Maps every `NodeId` this API constructed for one evaluation back to the
 /// `case_node_id` it was built from. Never claims to resolve a `NodeId`
@@ -58,8 +59,15 @@ impl NodeIdResolver {
     }
 }
 
-fn render_citation(fixture: &Fixture, claim: NormativeClaimId) -> Value {
-    match fixture.citation_for(claim) {
+fn citation_for(citations: &[(NormativeClaimId, ClaimCitation)], claim: NormativeClaimId) -> Option<&ClaimCitation> {
+    citations
+        .iter()
+        .find(|(id, _)| *id == claim)
+        .map(|(_, citation)| citation)
+}
+
+fn render_citation(citations: &[(NormativeClaimId, ClaimCitation)], claim: NormativeClaimId) -> Value {
+    match citation_for(citations, claim) {
         Some(citation) => json!({
             "proposition": citation.proposition,
             "source_issuer": citation.source_issuer,
@@ -75,7 +83,7 @@ fn render_citation(fixture: &Fixture, claim: NormativeClaimId) -> Value {
     }
 }
 
-pub fn render(evaluation: &ActionEvaluation, resolver: &NodeIdResolver, fixture: &Fixture) -> Value {
+pub fn render(evaluation: &ActionEvaluation, resolver: &NodeIdResolver, citations: &[(NormativeClaimId, ClaimCitation)]) -> Value {
     match evaluation {
         ActionEvaluation::Actionable(option) => json!({
             "kind": "actionable",
@@ -92,16 +100,16 @@ pub fn render(evaluation: &ActionEvaluation, resolver: &NodeIdResolver, fixture:
             "legal_support": option
                 .legal_support()
                 .iter()
-                .map(|c| render_citation(fixture, *c))
+                .map(|c| render_citation(citations, *c))
                 .collect::<Vec<_>>(),
             "unmet_requirements": option.unmet_requirements().len(),
         }),
         ActionEvaluation::NonActionable(non_actionable) => match non_actionable {
             NonActionable::InsufficientFacts(insufficient) => {
-                render_insufficient_facts(insufficient, fixture)
+                render_insufficient_facts(insufficient, citations)
             }
             NonActionable::Contraindicated(contraindicated) => {
-                render_contraindicated(contraindicated, resolver, fixture)
+                render_contraindicated(contraindicated, resolver, citations)
             }
             NonActionable::OutOfJurisdiction(out) => render_out_of_jurisdiction(out),
             NonActionable::PolicyNotCurrent(stale) => render_policy_not_current(stale),
@@ -110,14 +118,14 @@ pub fn render(evaluation: &ActionEvaluation, resolver: &NodeIdResolver, fixture:
     }
 }
 
-fn render_insufficient_facts(insufficient: &InsufficientFacts, fixture: &Fixture) -> Value {
+fn render_insufficient_facts(insufficient: &InsufficientFacts, citations: &[(NormativeClaimId, ClaimCitation)]) -> Value {
     json!({
         "kind": "non_actionable",
         "variant": "insufficient_facts",
         "legal_support": insufficient
             .legal_support()
             .iter()
-            .map(|c| render_citation(fixture, *c))
+            .map(|c| render_citation(citations, *c))
             .collect::<Vec<_>>(),
         "missing_requirement_count": insufficient.missing_requirements().len(),
     })
@@ -126,7 +134,7 @@ fn render_insufficient_facts(insufficient: &InsufficientFacts, fixture: &Fixture
 fn render_contraindicated(
     contraindicated: &Contraindicated,
     resolver: &NodeIdResolver,
-    fixture: &Fixture,
+    citations: &[(NormativeClaimId, ClaimCitation)],
 ) -> Value {
     json!({
         "kind": "non_actionable",
@@ -139,7 +147,7 @@ fn render_contraindicated(
         "legal_support": contraindicated
             .legal_support()
             .iter()
-            .map(|c| render_citation(fixture, *c))
+            .map(|c| render_citation(citations, *c))
             .collect::<Vec<_>>(),
         "evidence_count": contraindicated.evidence().len(),
     })

@@ -1,16 +1,17 @@
-//! Seeds the one policy bundle this round of the API targets
-//! (`nexo_policy_ar::build()`) into PostgreSQL, once, at startup. Returns
-//! the DB row ids the evaluation endpoint needs to satisfy the
-//! `action_evaluations` table's foreign keys — evaluation itself still
-//! runs against the in-memory `nexo_core::PolicyBundle`/`ActionRoute`
-//! `nexo-policy-ar` built; this only makes the *fact that an evaluation
-//! used this bundle version* durable and queryable.
+//! Seeds a policy bundle into PostgreSQL, once, idempotently, at startup.
+//! Returns the DB row ids the evaluation endpoint needs to satisfy the
+//! `action_evaluations` table's foreign keys — evaluation itself still runs
+//! against the in-memory `nexo_core::PolicyBundle`/`ActionRoute` the
+//! relevant policy crate built; this only makes the *fact that an
+//! evaluation used this bundle version* durable and queryable.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use nexo_app::repository::{
-    self, ActorRowId, ActionRouteRowId, CaseRowId, Pool, PolicyBundleRowId,
+    self, ActionRouteRowId, ActorRowId, CaseRowId, Pool, PolicyBundleRowId,
 };
 use sqlx::Row;
+
+use crate::bundle::PolicyBundleHandle;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SeededArBundle {
@@ -18,18 +19,33 @@ pub struct SeededArBundle {
     pub action_route: ActionRouteRowId,
 }
 
-pub async fn seed_ar_bundle(
+/// The bundle-specific literals `seed_bundle` needs, kept out of the
+/// generic seeding logic below so that logic cannot silently drift between
+/// bundles the way two hand-copied seed functions eventually would.
+pub struct SeedParams<'a> {
+    pub policy_version: &'a str,
+    pub validity_from: NaiveDate,
+    pub captured_at_unix_seconds: i64,
+    pub captured_source_sha256_hex: &'a str,
+    pub captured_source_issuer: &'a str,
+    pub captured_source_locator: &'a str,
+    pub claim_effective_from: NaiveDate,
+    pub route_title: &'a str,
+}
+
+pub async fn seed_bundle(
     pool: &Pool,
-    fixture: &nexo_policy_ar::Fixture,
+    handle: &PolicyBundleHandle,
+    params: SeedParams<'_>,
     seeded_by: ActorRowId,
 ) -> Result<SeededArBundle, repository::RepoError> {
     let mut tx = pool.begin().await?;
-    // Serialize startup seeding across processes. The policy identity below
-    // is a single fixture identity, so one advisory lock is sufficient and
-    // avoids duplicate activations that would otherwise invalidate existing
-    // preparations on every restart.
+    // Serialize startup seeding across processes. One advisory lock key per
+    // bundle (derived from its stable key, not user input) so two different
+    // bundles can seed concurrently without contending on the same lock.
+    let lock_key = advisory_lock_key(handle.key);
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(0x4e45584f_41525f31_i64)
+        .bind(lock_key)
         .execute(&mut *tx)
         .await?;
 
@@ -43,18 +59,22 @@ pub async fn seed_ar_bundle(
          JOIN digests digest
            ON digest.id = bundle.digest_id
          WHERE bundle.jurisdiction = 'AR'
+           AND bundle.bundle_key = $1
            AND bundle.schema_version = 1
-           AND bundle.policy_version = 'ar-ley25326-2026.1'
-           AND bundle.validity_from = DATE '2026-09-21'
+           AND bundle.policy_version = $2
+           AND bundle.validity_from = $3
            AND digest.algorithm = 'sha256'
-           AND digest.hex = $1
+           AND digest.hex = $4
            AND route.jurisdiction = 'AR'
-           AND route.title = $2
+           AND route.title = $5
          ORDER BY activation.activated_at DESC
          LIMIT 1",
     )
-    .bind(nexo_policy_ar::CAPTURED_SOURCE_SHA256_HEX)
-    .bind("Solicitar acceso, rectificación o supresión de datos personales")
+    .bind(handle.key)
+    .bind(params.policy_version)
+    .bind(params.validity_from)
+    .bind(params.captured_source_sha256_hex)
+    .bind(params.route_title)
     .fetch_optional(&mut *tx)
     .await?;
     if let Some(existing) = existing {
@@ -69,42 +89,34 @@ pub async fn seed_ar_bundle(
     // (provenance_records.case_id is NOT NULL); seeding uses a dedicated
     // bootstrap case as the provenance's home. See docs/API_CONTRACT.md,
     // "Known simplifications."
-    let bootstrap_case = sqlx::query(
-        "INSERT INTO cases (owner_actor_id) VALUES ($1) RETURNING id",
-    )
-    .bind(seeded_by.0)
-    .fetch_one(&mut *tx)
-    .await
-    .map(|row| CaseRowId(row.get("id")))?;
+    let bootstrap_case = sqlx::query("INSERT INTO cases (owner_actor_id) VALUES ($1) RETURNING id")
+        .bind(seeded_by.0)
+        .fetch_one(&mut *tx)
+        .await
+        .map(|row| CaseRowId(row.get("id")))?;
 
-    let captured_at: DateTime<Utc> = DateTime::from_timestamp(
-        1_789_948_800, // 2026-09-21T00:00:00Z — matches nexo_policy_ar::build()'s own capture instant
-        0,
-    )
-    .expect("fixed literal is a valid instant");
+    let captured_at: DateTime<Utc> = DateTime::from_timestamp(params.captured_at_unix_seconds, 0)
+        .expect("caller-supplied capture instant is a valid Unix timestamp");
 
-    let digest = repository::upsert_digest(
-        &mut tx,
-        "sha256",
-        nexo_policy_ar::CAPTURED_SOURCE_SHA256_HEX,
-    )
-    .await?;
+    let digest =
+        repository::upsert_digest(&mut tx, "sha256", params.captured_source_sha256_hex).await?;
     let provenance = repository::insert_provenance(
         &mut tx,
         bootstrap_case,
         "web_fetch",
         Some(seeded_by),
         captured_at,
-        serde_json::json!({"source": "nexo-policy-ar::build()"}),
+        serde_json::json!({"bundle_key": handle.key}),
     )
     .await?;
 
     let policy_bundle = repository::insert_policy_bundle(
         &mut tx,
         "AR",
+        handle.key,
         1,
-        "ar-ley25326-2026.1",
-        chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
+        params.policy_version,
+        params.validity_from,
         None,
         digest,
         digest,
@@ -115,8 +127,8 @@ pub async fn seed_ar_bundle(
         &mut tx,
         "primary_official",
         "web_fetch",
-        nexo_policy_ar::CAPTURED_SOURCE_ISSUER,
-        nexo_policy_ar::CAPTURED_SOURCE_LOCATOR,
+        params.captured_source_issuer,
+        params.captured_source_locator,
         captured_at,
         digest,
         digest,
@@ -124,15 +136,14 @@ pub async fn seed_ar_bundle(
     )
     .await?;
 
-    let law_promulgated = chrono::NaiveDate::from_ymd_opt(2000, 10, 30).unwrap();
     let mut claim_rows = Vec::new();
-    for (_, citation) in &fixture.citations {
+    for (_, citation) in &handle.citations {
         let claim = repository::insert_normative_claim(
             &mut tx,
             policy_bundle,
             citation.proposition,
             "AR",
-            law_promulgated,
+            params.claim_effective_from,
             None,
             &[(source, "primary")],
         )
@@ -144,7 +155,7 @@ pub async fn seed_ar_bundle(
         &mut tx,
         policy_bundle,
         "AR",
-        "Solicitar acceso, rectificación o supresión de datos personales",
+        params.route_title,
         &claim_rows,
     )
     .await?;
@@ -156,4 +167,62 @@ pub async fn seed_ar_bundle(
         policy_bundle,
         action_route,
     })
+}
+
+/// Derives a stable, non-adversarial advisory-lock key from a bundle's own
+/// (compile-time-fixed) key string — never from anything request-supplied.
+fn advisory_lock_key(bundle_key: &str) -> i64 {
+    let digest = nexo_integrity::hash_bytes(bundle_key.as_bytes());
+    let bytes: [u8; 8] = digest.as_bytes()[..8].try_into().expect("8-byte slice");
+    i64::from_be_bytes(bytes)
+}
+
+pub async fn seed_ley_25326(
+    pool: &Pool,
+    fixture: &nexo_policy_ar::Fixture,
+    seeded_by: ActorRowId,
+) -> Result<(PolicyBundleHandle, SeededArBundle), repository::RepoError> {
+    let handle = PolicyBundleHandle::from_ley_25326(fixture);
+    let seeded = seed_bundle(
+        pool,
+        &handle,
+        SeedParams {
+            policy_version: "ar-ley25326-2026.1",
+            validity_from: NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
+            captured_at_unix_seconds: 1_789_948_800, // 2026-09-21T00:00:00Z
+            captured_source_sha256_hex: nexo_policy_ar::CAPTURED_SOURCE_SHA256_HEX,
+            captured_source_issuer: nexo_policy_ar::CAPTURED_SOURCE_ISSUER,
+            captured_source_locator: nexo_policy_ar::CAPTURED_SOURCE_LOCATOR,
+            claim_effective_from: NaiveDate::from_ymd_opt(2000, 10, 30).unwrap(),
+            route_title: "Solicitar acceso, rectificación o supresión de datos personales",
+        },
+        seeded_by,
+    )
+    .await?;
+    Ok((handle, seeded))
+}
+
+pub async fn seed_ley_27736(
+    pool: &Pool,
+    fixture: &nexo_policy_ar_digital_violence::Fixture,
+    seeded_by: ActorRowId,
+) -> Result<(PolicyBundleHandle, SeededArBundle), repository::RepoError> {
+    let handle = PolicyBundleHandle::from_ley_27736(fixture);
+    let seeded = seed_bundle(
+        pool,
+        &handle,
+        SeedParams {
+            policy_version: "ar-ley27736-2026.1",
+            validity_from: NaiveDate::from_ymd_opt(2026, 9, 22).unwrap(),
+            captured_at_unix_seconds: 1_790_035_200, // 2026-09-22T00:00:00Z
+            captured_source_sha256_hex: nexo_policy_ar_digital_violence::CAPTURED_SOURCE_SHA256_HEX,
+            captured_source_issuer: nexo_policy_ar_digital_violence::CAPTURED_SOURCE_ISSUER,
+            captured_source_locator: nexo_policy_ar_digital_violence::CAPTURED_SOURCE_LOCATOR,
+            claim_effective_from: NaiveDate::from_ymd_opt(2023, 10, 23).unwrap(),
+            route_title: "Solicitar orden judicial de cese y remoción de contenido de violencia digital",
+        },
+        seeded_by,
+    )
+    .await?;
+    Ok((handle, seeded))
 }

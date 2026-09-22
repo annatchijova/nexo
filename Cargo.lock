@@ -917,6 +917,7 @@ dependencies = [
  "nexo-extraction",
  "nexo-integrity",
  "nexo-policy-ar",
+ "nexo-policy-ar-digital-violence",
  "nexo-sandbox",
  "nexo-verifier",
  "serde",

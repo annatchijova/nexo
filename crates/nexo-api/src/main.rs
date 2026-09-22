@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::path::PathBuf;
 
-use nexo_api::{router, AppState};
+use nexo_api::{router, AppState, BundleEntry};
 use nexo_app::object_store::FilesystemObjectStore;
-use nexo_app::repository::{self, ActorRowId};
+use nexo_app::repository;
 use axum::http::HeaderValue;
 use tower_http::cors::CorsLayer;
 
@@ -33,16 +34,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     tracing::info!(actor_id = owner.0, "bootstrap owner ready");
 
-    let fixture = nexo_policy_ar::build();
-    let seeded = ensure_ar_bundle_seeded(&pool, &fixture, owner).await?;
+    let ley_25326_fixture = nexo_policy_ar::build();
+    let (ley_25326_handle, ley_25326_seeded) =
+        nexo_api::seed::seed_ley_25326(&pool, &ley_25326_fixture, owner).await?;
+    tracing::info!(bundle = ley_25326_handle.key, "policy bundle seeded");
+
+    let ley_27736_fixture = nexo_policy_ar_digital_violence::build();
+    let (ley_27736_handle, ley_27736_seeded) =
+        nexo_api::seed::seed_ley_27736(&pool, &ley_27736_fixture, owner).await?;
+    tracing::info!(bundle = ley_27736_handle.key, "policy bundle seeded");
+
+    let mut bundles = HashMap::new();
+    bundles.insert(
+        ley_25326_handle.key,
+        BundleEntry {
+            handle: ley_25326_handle,
+            seeded: ley_25326_seeded,
+        },
+    );
+    bundles.insert(
+        ley_27736_handle.key,
+        BundleEntry {
+            handle: ley_27736_handle,
+            seeded: ley_27736_seeded,
+        },
+    );
 
     let store = FilesystemObjectStore::open(&object_store_root)?;
 
     let state = AppState {
         pool,
         store: Arc::new(store),
-        fixture: Arc::new(fixture),
-        seeded,
+        bundles: Arc::new(bundles),
         export_root,
     };
 
@@ -59,15 +82,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(%bind_addr, "nexo-api listening");
     axum::serve(listener, app).await?;
     Ok(())
-}
-
-/// Ensures the exact AR fixture identity is activated at startup. The seed
-/// helper is idempotent and serializes concurrent process starts, so a restart
-/// does not create a new policy version or invalidate unchanged preparations.
-async fn ensure_ar_bundle_seeded(
-    pool: &repository::Pool,
-    fixture: &nexo_policy_ar::Fixture,
-    owner: ActorRowId,
-) -> Result<nexo_api::seed::SeededArBundle, Box<dyn std::error::Error>> {
-    Ok(nexo_api::seed::seed_ar_bundle(pool, fixture, owner).await?)
 }

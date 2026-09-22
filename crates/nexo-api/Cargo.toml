@@ -18,6 +18,7 @@ nexo-integrity = { path = "../nexo-integrity" }
 nexo-sandbox = { path = "../nexo-sandbox" }
 nexo-extraction = { path = "../nexo-extraction" }
 nexo-policy-ar = { path = "../nexo-policy-ar" }
+nexo-policy-ar-digital-violence = { path = "../nexo-policy-ar-digital-violence" }
 nexo-verifier = { path = "../nexo-verifier" }
 axum = "0.8.9"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "signal"] }

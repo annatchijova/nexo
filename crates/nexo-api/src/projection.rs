@@ -9,6 +9,7 @@ use nexo_core::{CaseProjection, FactualSupport, NodeId, RequirementId};
 use nexo_app::repository::{self, CaseRowId, Pool};
 use nexo_integrity::{seal, CanonicalValue};
 
+use crate::bundle::PolicyBundleHandle;
 use crate::explain::NodeIdResolver;
 
 #[derive(Debug)]
@@ -72,22 +73,21 @@ fn node_id(case_node_id: i64) -> NodeId {
     NodeId::new(NonZeroU64::new(value).expect("case_node_id is always > 0"))
 }
 
-/// Builds the projection for `case` against the fixture's single
-/// `identity_requirement`: satisfied if and only if the case has at least
-/// one *confirmed* user assertion. This is a deliberate simplification —
-/// a real deployment would let a specific evidence item satisfy a specific
-/// named requirement, not "any confirmed assertion satisfies the one
-/// requirement this bundle happens to have" — recorded honestly here
-/// rather than left implicit. See docs/API_CONTRACT.md, "Known
-/// simplifications."
+/// Builds the projection for `case` against `handle`'s single mandatory
+/// requirement, satisfied per `handle.requirement_signal` — a real,
+/// bundle-specific rule, not a generic "any evidence counts" fallback. Each
+/// signal is still a simplification worth naming: it asks "does the case
+/// contain *a* node of the right kind" rather than "does a specific
+/// evidence item satisfy this specific requirement." See
+/// docs/API_CONTRACT.md, "Known simplifications."
 pub async fn build_projection(
     pool: &Pool,
     case: CaseRowId,
-    fixture: &nexo_policy_ar::Fixture,
+    handle: &PolicyBundleHandle,
 ) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
     let nodes = repository::list_case_nodes_with_kind(pool, case).await?;
 
-    build_projection_from_nodes(nodes, fixture)
+    build_projection_from_nodes(nodes, handle)
 }
 
 /// Builds a projection from a caller-owned transaction snapshot. The caller
@@ -96,21 +96,19 @@ pub async fn build_projection(
 pub async fn build_projection_in_tx(
     tx: &mut repository::Tx<'_>,
     case: CaseRowId,
-    fixture: &nexo_policy_ar::Fixture,
+    handle: &PolicyBundleHandle,
 ) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
     let nodes = repository::list_case_nodes_with_kind_tx(tx, case).await?;
 
-    build_projection_from_nodes(nodes, fixture)
+    build_projection_from_nodes(nodes, handle)
 }
 
 fn build_projection_from_nodes(
     nodes: Vec<repository::CaseNodeSummary>,
-    fixture: &nexo_policy_ar::Fixture,
+    handle: &PolicyBundleHandle,
 ) -> Result<(CaseProjection, NodeIdResolver, InputManifest), ProjectionError> {
-
     let mut resolver = NodeIdResolver::default();
     let mut factual_support = Vec::new();
-    let mut identity_satisfied = false;
 
     for node in &nodes {
         let id = node_id(node.node_id);
@@ -118,12 +116,7 @@ fn build_projection_from_nodes(
         match node.kind.as_str() {
             "artifact" => factual_support.push(FactualSupport::Artifact(id)),
             "observation" => factual_support.push(FactualSupport::Observation(id)),
-            "user_assertion" => {
-                factual_support.push(FactualSupport::UserAssertion(id));
-                if node.confirmed == Some(true) {
-                    identity_satisfied = true;
-                }
-            }
+            "user_assertion" => factual_support.push(FactualSupport::UserAssertion(id)),
             "derived_fact" => factual_support.push(FactualSupport::DerivedFact(id)),
             // "inference" is deliberately excluded: it is a graph node and
             // nothing more, never factual support (docs/CASE_GRAPH_CONTRACT.md).
@@ -135,17 +128,18 @@ fn build_projection_from_nodes(
         return Err(ProjectionError::NoFactualSupportYet);
     }
 
-    let satisfied_requirements: Vec<RequirementId> = if identity_satisfied {
-        vec![fixture.identity_requirement]
-    } else {
-        Vec::new()
-    };
+    let satisfied_requirements: Vec<RequirementId> =
+        if handle.requirement_signal.is_satisfied(&nodes) {
+            vec![handle.mandatory_requirement]
+        } else {
+            Vec::new()
+        };
 
     let projection = CaseProjection::try_new(
         factual_support,
         satisfied_requirements,
-        fixture.jurisdiction_evidence,
-        fixture.freshness_evidence,
+        handle.jurisdiction_evidence,
+        handle.freshness_evidence,
     )
     .map_err(ProjectionError::Core)?;
 

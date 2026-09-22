@@ -9,10 +9,11 @@ through `nexo-app`, evidence ingestion through `nexo-sandbox`/
 `nexo-core` already computed. It contains no domain logic of its own.
 
 Implements plan.md Step 5, on top of the repository layer that completed
-Step 1's deferred slice. Targets exactly one policy bundle end to end
-(`nexo-policy-ar`'s Ley 25.326 data-access bundle) rather than a generic
-multi-bundle import surface — the generic surface is future work once a
-second bundle exists to design against.
+Step 1's deferred slice. Now targets two real, independently seeded policy
+bundles (`nexo-policy-ar`'s Ley 25.326 data-access bundle, and
+`nexo-policy-ar-digital-violence`'s Ley 27.736 bundle), selected per
+evaluation via `?bundle=<key>` — see "Bundle selection" below. Still not a
+generic import surface for arbitrary bundles; that remains future work.
 
 ## Authentication
 
@@ -37,15 +38,66 @@ case's owner and compares it to the authenticated actor — a mismatch and a
 nonexistent case both return `404`, never `403`, so a case's existence is
 not leaked to a non-owner.
 
+## Bundle selection
+
+`GET /v1/bundles` (unauthenticated — it names only which legal routes
+exist, not case data) lists the seeded bundles:
+
+```json
+[
+  {"key": "ley-25326", "display_name": "Ley 25.326 — acceso, rectificación y supresión de datos personales"},
+  {"key": "ley-27736", "display_name": "Ley 27.736 (Ley Olimpia) — violencia digital, remoción de contenido"}
+]
+```
+
+`POST /v1/cases/{case_id}/evaluate?bundle=<key>` evaluates against the
+named bundle; omitting `?bundle=` defaults to `ley-25326`
+(`nexo_api::DEFAULT_BUNDLE_KEY`), so every endpoint that existed before
+bundle selection was added keeps working unchanged. An unknown key is
+`404`.
+
+Each bundle in `crates/nexo-api/src/bundle.rs::PolicyBundleHandle` carries
+its own `RequirementSignal` — the rule for when its one mandatory
+requirement counts as satisfied, since the two bundles' preconditions are
+genuinely different (a confirmed identity assertion for Ley 25.326; the
+specific content/URL being identified, via an `Artifact` node, for Ley
+27.736). This is why the same case can be `InsufficientFacts` under one
+bundle and `Actionable` under the other from the same evidence — verified
+by `ley_27736_bundle_is_actionable_once_content_is_identified` in
+`crates/nexo-api/tests/api_test.rs`.
+
+`POST /v1/cases/{case_id}/preparations` does not take a `bundle` parameter:
+which bundle produced an evaluation is looked up from that evaluation's own
+receipt binding (`repository::find_evaluation_receipt_binding`), never
+assumed or re-specified by the caller — an evaluation's bundle identity is
+exactly what the receipt already pins.
+
+**A real bug found and fixed while wiring the second bundle in:**
+`nexo-app`'s preparation-invalidation check
+(`repository::current_policy_bundle_id`) originally asked "is this the most
+recently activated bundle for this **jurisdiction**?" — correct when only
+one bundle per jurisdiction was ever seeded, but the moment a second,
+unrelated AR bundle (Ley 27.736) was activated, it made every existing Ley
+25.326 preparation appear stale (`PolicyBundleChanged`), because both
+bundles share the jurisdiction string `"AR"`. Confirmed by induction: the
+existing end-to-end preparation test failed immediately after the second
+bundle was wired in. Fixed by adding a `bundle_key` column to
+`policy_bundles` (`migrations/0001_init.sql`) — a stable identity for
+"which legal instrument is this a version of," distinct from jurisdiction —
+and rescoping `current_policy_bundle_id`/`lock_policy_jurisdiction` by that
+column. A jurisdiction can now host several independently current bundles
+without one's activation invalidating another's.
+
 ## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/v1/bundles` | List the seeded policy bundles (key + display name). Unauthenticated. |
 | `POST` | `/v1/cases` | Create a case owned by the authenticated actor. |
 | `GET` | `/v1/cases/{case_id}` | Read the authorized case graph node summary, including node creation timestamps. |
 | `POST` | `/v1/cases/{case_id}/evidence` | Ingest plain-text evidence: object store -> sandboxed extraction -> artifact + observation nodes, or a bounded rejection reason. |
 | `POST` | `/v1/cases/{case_id}/assertions` | Record a user assertion (confirmed or not). |
-| `POST` | `/v1/cases/{case_id}/evaluate` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate`, render and record the result. |
+| `POST` | `/v1/cases/{case_id}/evaluate?bundle=<key>` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate` against the named bundle (default `ley-25326`), render and record the result. |
 | `GET` | `/v1/cases/{case_id}/evaluations` | List recorded evaluations, returning the same rendered JSON stored at evaluation time. |
 | `POST` | `/v1/cases/{case_id}/preparations` | Create a deterministic local `draft_request` from a current supported evaluation; never sends it. |
 | `POST` | `/v1/cases/{case_id}/preparations/{preparation_id}/export` | Materialize an owner-authorized preparation as a verifiable export and advance it to `exported`. |

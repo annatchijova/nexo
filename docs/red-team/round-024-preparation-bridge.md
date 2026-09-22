@@ -254,3 +254,17 @@ The digest table required a non-empty string but did not require the canonical
 row could therefore look algorithmically valid to downstream foreign keys.
 The schema now enforces the representation, and the repository probe rejects
 malformed SHA-256 rows before they can bind to material.
+
+### RT-024-23 — Other digest algorithms remained bindable outside preparation
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium integrity boundary
+
+The `digests` table previously allowed arbitrary algorithms, while foreign keys
+on artifacts, normative sources, policy bundles, evaluations, receipts, and
+preparations checked only row existence. A direct writer could therefore bind
+an `md5` row to a persisted identity even though the integrity boundary and
+all producers use SHA-256. The migration now makes the digest table's sole
+accepted representation explicit: algorithm `sha256` and exactly 64 lowercase
+hexadecimal characters. The repository regression test proves rejection before
+the row can be referenced.

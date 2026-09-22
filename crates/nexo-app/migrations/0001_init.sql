@@ -27,12 +27,12 @@ create index cases_owner_actor_id_idx on cases (owner_actor_id);
 
 create table digests (
     id                  bigint generated always as identity primary key,
-    algorithm           text not null,
+    algorithm           text not null default 'sha256',
     hex                 text not null,
     unique (algorithm, hex),
     check (
-        algorithm <> 'sha256'
-        or hex ~ '^[0-9a-f]{64}$'
+        algorithm = 'sha256'
+        and hex ~ '^[0-9a-f]{64}$'
     )
 );
 

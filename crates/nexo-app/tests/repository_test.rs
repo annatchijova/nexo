@@ -590,23 +590,10 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "md5",
         "not-a-sha256-digest",
     )
-    .await
-    .unwrap();
-    let wrong_algorithm_preparation = repository::insert_preparation(
-        &mut wrong_algorithm_tx,
-        evaluation,
-        route,
-        digest,
-        input_manifest_digest,
-        "test",
-        "draft_request",
-        wrong_algorithm_digest,
-        provenance,
-    )
     .await;
     assert!(
-        wrong_algorithm_preparation.is_err(),
-        "preparation output must use a sha256 digest"
+        wrong_algorithm_digest.is_err(),
+        "digest rows must use the canonical sha256 algorithm"
     );
     wrong_algorithm_tx.rollback().await.unwrap();
 

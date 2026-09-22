@@ -23,6 +23,11 @@ result schema version. Missing
 or mismatched evidence fails closed; no receipt is emitted for a
 non-actionable or conditionally supported result.
 
+All persisted digest references use the canonical lowercase 64-character
+SHA-256 representation. The database rejects alternate algorithms and
+malformed encodings before they can bind to an artifact, policy, evaluation,
+receipt, or preparation.
+
 ## Authority boundary
 
 The API/application composition owns the receipt because it is the only layer

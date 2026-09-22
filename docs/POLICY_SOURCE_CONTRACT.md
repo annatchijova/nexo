@@ -86,6 +86,9 @@ of the same locator with changed bytes is a new `NormativeSource` capture with
 a new artifact/digest. It may supersede an older source in a later policy
 bundle but must not overwrite historical evaluations.
 
+The database enforces the digest equality above: a source row cannot bind a
+different digest to its captured artifact reference.
+
 ## Claim invariants
 
 For every `NormativeClaim` used as legal support:

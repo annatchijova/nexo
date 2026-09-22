@@ -255,6 +255,18 @@ row could therefore look algorithmically valid to downstream foreign keys.
 The schema now enforces the representation, and the repository probe rejects
 malformed SHA-256 rows before they can bind to material.
 
+### RT-024-24 — Normative source could bind a different capture digest
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+`normative_sources` stored both the captured-artifact digest and the source
+digest, but the foreign keys did not require those references to be equal. A
+direct writer could therefore make a source appear to describe one captured
+artifact while its digest named another valid row. The new database trigger
+rejects that mismatch, and the repository regression test exercises the failed
+insert in an isolated transaction.
+
 ### RT-024-23 — Other digest algorithms remained bindable outside preparation
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

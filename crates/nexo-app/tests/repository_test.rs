@@ -377,6 +377,32 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     .unwrap();
     tx.commit().await.unwrap();
 
+    let mut mismatched_source_tx = pool.begin().await.unwrap();
+    let other_digest = repository::upsert_digest(
+        &mut mismatched_source_tx,
+        "sha256",
+        &"44".repeat(32),
+    )
+    .await
+    .unwrap();
+    let mismatched_source = repository::insert_normative_source(
+        &mut mismatched_source_tx,
+        "primary_official",
+        "web_fetch",
+        "Test Issuer",
+        "https://example.gov.ar/changed-law",
+        Utc::now(),
+        digest,
+        other_digest,
+        provenance,
+    )
+    .await;
+    assert!(
+        mismatched_source.is_err(),
+        "a normative source digest must match its captured artifact digest"
+    );
+    mismatched_source_tx.rollback().await.unwrap();
+
     let mut policy_preparation_tx = pool.begin().await.unwrap();
     let policy_preparation = repository::insert_preparation(
         &mut policy_preparation_tx,

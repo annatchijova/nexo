@@ -222,6 +222,22 @@ create table normative_sources (
     provenance_id           bigint not null references provenance_records (id)
 );
 
+create function normative_source_digest_matches_capture()
+returns trigger as $$
+begin
+    if new.digest_id is distinct from new.captured_artifact_digest_id then
+        raise exception
+            'normative source % digest must match its captured artifact digest',
+            new.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger normative_source_digest_matches_capture_trigger
+    before insert or update on normative_sources
+    for each row execute function normative_source_digest_matches_capture();
+
 create table policy_bundles (
     id                      bigint generated always as identity primary key,
     jurisdiction            text not null,

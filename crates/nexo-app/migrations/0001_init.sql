@@ -1192,6 +1192,26 @@ create trigger action_evaluation_matches_route_bundle_trigger
     before insert or update on action_evaluations
     for each row execute function action_evaluation_matches_route_bundle();
 
+create function action_evaluation_requires_activated_bundle()
+returns trigger as $$
+begin
+    if not exists (
+        select 1
+        from policy_bundle_activations
+        where policy_bundle_id = new.policy_bundle_id
+    ) then
+        raise exception
+            'action evaluation % requires an activated policy bundle',
+            new.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger action_evaluation_requires_activated_bundle_trigger
+    before insert or update on action_evaluations
+    for each row execute function action_evaluation_requires_activated_bundle();
+
 -- Binding evidence for a future preparation capability. This receipt is not
 -- itself a VerifiedPreparationSnapshot; it records the durable relations the
 -- application must prove before crossing into nexo-core preparation.

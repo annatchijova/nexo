@@ -828,6 +828,51 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "a normative claim without a source must not commit"
     );
 
+    let (unactivated_route, unactivated_bundle) = {
+        let mut tx = pool.begin().await.unwrap();
+        let claim = repository::insert_normative_claim(
+            &mut tx,
+            empty_route_bundle,
+            "unactivated evaluation claim",
+            "AR",
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+            &[(source, "primary")],
+        )
+        .await
+        .unwrap();
+        let route = repository::insert_action_route(
+            &mut tx,
+            empty_route_bundle,
+            "AR",
+            "unactivated evaluation route",
+            &[claim],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        (route, empty_route_bundle)
+    };
+    let mut unactivated_evaluation_tx = pool.begin().await.unwrap();
+    let unactivated_evaluation = repository::insert_action_evaluation(
+        &mut unactivated_evaluation_tx,
+        case,
+        unactivated_route,
+        unactivated_bundle,
+        "0.1.0",
+        "actionable",
+        Some("supported"),
+        None,
+        1,
+        json!({}),
+    )
+    .await;
+    assert!(
+        unactivated_evaluation.is_err(),
+        "evaluations must require an activated policy bundle"
+    );
+    unactivated_evaluation_tx.rollback().await.unwrap();
+
     let mut mismatched_source_tx = pool.begin().await.unwrap();
     let other_digest = repository::upsert_digest(
         &mut mismatched_source_tx,

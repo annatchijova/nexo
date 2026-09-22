@@ -541,3 +541,15 @@ an already activated bundle without changing any frozen row. Insert guards now
 reject new claims and routes in activated bundles, with regression coverage for
 both paths. Route requirements already had an insert guard through the existing
 activation immutability trigger.
+
+### RT-024-49 — Evaluations could use an unactivated policy bundle
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-authority boundary
+
+`action_evaluations` checked that its route and bundle agreed, but did not
+require the bundle to have an activation record. A direct writer could
+therefore persist a sealed decision under a policy definition that had never
+been authorized for use. A database trigger now requires an activated bundle
+for evaluation inserts and updates, with a regression test using an otherwise
+valid unactivated route.

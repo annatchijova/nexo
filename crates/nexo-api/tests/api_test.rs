@@ -367,13 +367,28 @@ async fn full_flow_evidence_to_actionable_citation() {
     assert!(http_preparation_id > 0);
     assert_eq!(http_preparation["kind"], "draft_request");
     assert_eq!(http_preparation["status"], "prepared");
-    sqlx::query(
-        "UPDATE preparations SET status = 'exported'::preparation_status WHERE id = $1",
+    let export_root = tempfile::tempdir().unwrap();
+    let export_dir = export_root.path().join("preparation-export");
+    let exported = nexo_api::preparation::export_preparation(
+        &state.pool,
+        &state.store,
+        owner,
+        repository::CaseRowId(case_id),
+        http_preparation_id,
+        &export_dir,
     )
-    .bind(http_preparation_id)
-    .execute(&state.pool)
     .await
     .unwrap();
+    assert_eq!(exported.artifact_count, 1);
+    let verified = nexo_verifier::verify_export(export_dir.join("manifest.json")).unwrap();
+    assert_eq!(verified.manifest_digest, exported.manifest_digest);
+    let exported_status: String =
+        sqlx::query_scalar("SELECT status::text FROM preparations WHERE id = $1")
+            .bind(http_preparation_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    assert_eq!(exported_status, "exported");
 
     let response = app
         .clone()

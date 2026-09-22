@@ -30,5 +30,6 @@ sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "chrono", "
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+nexo-verifier = { path = "../nexo-verifier" }
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }

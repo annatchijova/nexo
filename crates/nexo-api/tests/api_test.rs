@@ -342,6 +342,32 @@ async fn full_flow_evidence_to_actionable_citation() {
     assert_eq!(http_preparation["kind"], "draft_request");
     assert_eq!(http_preparation["status"], "prepared");
 
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/preparations"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "evaluation_id": evaluation_id,
+                        "kind": "draft_request"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let retried_preparation = body_json(response).await;
+    assert_eq!(
+        retried_preparation["preparation_id"],
+        http_preparation["preparation_id"]
+    );
+
     sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
         .bind(evaluation_id)
         .execute(&state.pool)

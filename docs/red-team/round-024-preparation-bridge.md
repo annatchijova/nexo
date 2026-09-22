@@ -161,6 +161,16 @@ materials stale. Startup seeding now serializes on an advisory transaction lock
 and returns the existing activated bundle/route for the exact fixture identity;
 the API test invokes seeding twice and asserts identical durable IDs.
 
+### RT-024-16 — Preparation retries could duplicate current materials
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The first HTTP preparation path inserted a new row on every identical retry.
+The bridge now locks the case before checking the current manifest and returns
+the existing non-invalidated preparation for the same evaluation, kind, and
+generator version. The API test repeats the request and asserts the same
+preparation id.
+
 ### RT-024-13 — Receipted evaluation result could be rewritten
 
 **Level:** CONFIRMED BY INDUCTION → REMEDIATED

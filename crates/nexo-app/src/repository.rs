@@ -746,6 +746,30 @@ pub async fn evaluation_receipt_exists(
     Ok(row.get("exists"))
 }
 
+pub async fn find_active_preparation(
+    tx: &mut Tx<'_>,
+    evaluation: ActionEvaluationRowId,
+    kind: &str,
+    generator_version: &str,
+) -> Result<Option<i64>, RepoError> {
+    let row = sqlx::query(
+        "SELECT id
+         FROM preparations
+         WHERE action_evaluation_id = $1
+           AND kind = $2::preparation_kind
+           AND generator_version = $3
+           AND status <> 'invalidated'::preparation_status
+         ORDER BY id
+         LIMIT 1",
+    )
+    .bind(evaluation.0)
+    .bind(kind)
+    .bind(generator_version)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.map(|row| row.get("id")))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_preparation(
     tx: &mut Tx<'_>,

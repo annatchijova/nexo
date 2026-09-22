@@ -184,6 +184,16 @@ pub async fn persist_prepared_material(
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
     }
+    if let Some(existing) = repository::find_active_preparation(
+        &mut tx,
+        evaluation,
+        kind,
+        generator_version,
+    )
+    .await?
+    {
+        return Ok(existing);
+    }
     let output_digest = store.put(bytes)?;
     let output_digest = repository::upsert_digest(&mut tx, "sha256", &output_digest.to_string())
         .await?;
@@ -238,6 +248,16 @@ pub async fn persist_prepared_material_with_provenance(
         })?;
     if current_manifest != binding.input_manifest_digest_hex {
         return Err(PreparationVerificationError::InputManifestChanged);
+    }
+    if let Some(existing) = repository::find_active_preparation(
+        &mut tx,
+        evaluation,
+        kind,
+        generator_version,
+    )
+    .await?
+    {
+        return Ok(existing);
     }
     let output_digest = store.put(bytes)?;
     let provenance = repository::insert_provenance(

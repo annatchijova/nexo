@@ -69,16 +69,29 @@ insert into digests (algorithm, hex) values ('sha256', repeat('ef', 32));
 insert into provenance_records (case_id, channel, actor_id, recorded_at) values (1, 'imported_bundle', 1, now());
 insert into policy_bundles (jurisdiction, schema_version, policy_version, validity_from, captured_artifact_digest_id, digest_id, provenance_id)
   values ('AR', 1, '2026.1', '2026-01-01', 3, 3, 3);
-insert into policy_bundle_activations (policy_bundle_id, activated_by_actor_id) values (1, 1);
 insert into normative_claims (policy_bundle_id, proposition, jurisdiction, validity_from)
   values (1, 'right to request data access', 'AR', '2026-01-01');
 insert into normative_claim_sources (claim_id, source_id, role, ordinal) values (1, 1, 'primary', 0);
 insert into action_routes (policy_bundle_id, jurisdiction, title)
   values (1, 'AR', 'request personal data access');
 insert into action_route_claims (route_id, claim_id, ordinal) values (1, 1, 0);
+insert into policy_bundle_activations (policy_bundle_id, activated_by_actor_id) values (1, 1);
 insert into action_evaluations (case_id, route_id, policy_bundle_id, evaluator_version, result_kind, action_status, result_schema_version, result_payload)
   values (1, 1, 1, '0.1.0', 'actionable', 'supported', 1, '{"factual_support":[{"artifact":1}]}');
-insert into preparations (action_evaluation_id, kind) values (1, 'draft_request');
+insert into digests (algorithm, hex) values
+  ('sha256', repeat('11', 32)),
+  ('sha256', repeat('22', 32)),
+  ('sha256', repeat('33', 32));
+insert into evaluation_receipts
+  (action_evaluation_id, case_id, action_route_id, policy_bundle_id,
+   input_manifest_digest_id, result_digest_id, action_digest_id,
+   manifest_schema_version, result_schema_version, evaluator_version)
+  values (1, 1, 1, 1, 4, 5, 6, 1, 1, '0.1.0');
+insert into preparations
+  (action_evaluation_id, action_route_id, policy_bundle_digest_id,
+   input_manifest_digest_id, generator_version, kind, output_digest_id,
+   output_provenance_id)
+  values (1, 1, 3, 4, 'schema-test', 'draft_request', 5, 3);
 commit;
 SQL
 

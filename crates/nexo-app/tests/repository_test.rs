@@ -554,6 +554,35 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     activated_bundle_update_tx.rollback().await.unwrap();
 
+    let mut activation_update_tx = pool.begin().await.unwrap();
+    let activation_update = sqlx::query(
+        "UPDATE policy_bundle_activations
+         SET activated_by_actor_id = $1
+         WHERE policy_bundle_id = $2",
+    )
+    .bind(actor.0)
+    .bind(bundle.0)
+    .execute(&mut *activation_update_tx)
+    .await;
+    assert!(
+        activation_update.is_err(),
+        "policy bundle activations must be append-only"
+    );
+    activation_update_tx.rollback().await.unwrap();
+
+    let mut activation_delete_tx = pool.begin().await.unwrap();
+    let activation_delete = sqlx::query(
+        "DELETE FROM policy_bundle_activations WHERE policy_bundle_id = $1",
+    )
+    .bind(bundle.0)
+    .execute(&mut *activation_delete_tx)
+    .await;
+    assert!(
+        activation_delete.is_err(),
+        "policy bundle activations must not be deletable"
+    );
+    activation_delete_tx.rollback().await.unwrap();
+
     let mut activated_route_update_tx = pool.begin().await.unwrap();
     let activated_route_update = sqlx::query(
         "UPDATE action_routes SET title = 'tampered route' WHERE id = $1",

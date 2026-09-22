@@ -185,7 +185,8 @@ gives:
   `MAX_DERIVATION_INPUTS`/`MAX_INFERENCE_INPUTS`.
 - **`policy_bundles`, `policy_bundle_activations`** — bundle identity is
   immutable after activation; `policy_bundle_activations` is append-only, per
-  the transaction contract above.
+  the transaction contract above. The database rejects activation updates and
+  deletes so an old activation cannot be erased to unlock historical mutation.
 - **`normative_sources`, `normative_claims`, `normative_claim_sources`** —
   mirrors `docs/POLICY_BUNDLE_CONTRACT.md`'s bundle identity fields exactly;
   `normative_claim_sources` requires at least one row per claim, enforced at

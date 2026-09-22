@@ -267,6 +267,17 @@ artifact while its digest named another valid row. The new database trigger
 rejects that mismatch, and the repository regression test exercises the failed
 insert in an isolated transaction.
 
+### RT-024-26 — Activation history was deletable or mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-integrity boundary
+
+The schema described `policy_bundle_activations` as append-only but had no
+database trigger enforcing that property. A direct writer could delete the
+activation that made a bundle immutable, then mutate the historical bundle,
+or rewrite activation metadata in place. The new trigger rejects both update
+and delete, with regression coverage for each operation.
+
 ### RT-024-25 — Policy bundle could bind a different capture digest
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

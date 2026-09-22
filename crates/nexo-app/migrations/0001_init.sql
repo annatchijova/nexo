@@ -281,6 +281,17 @@ create table policy_bundle_activations (
 create index policy_bundle_activations_bundle_idx
     on policy_bundle_activations (policy_bundle_id);
 
+create function policy_bundle_activations_are_append_only()
+returns trigger as $$
+begin
+    raise exception 'policy bundle activations are append-only';
+end;
+$$ language plpgsql;
+
+create trigger policy_bundle_activations_are_append_only_trigger
+    before update or delete on policy_bundle_activations
+    for each row execute function policy_bundle_activations_are_append_only();
+
 -- Activation freezes the exact policy identity used by later evaluations and
 -- receipts. Without this trigger, an UPDATE could silently rewrite the
 -- policy behind an already-issued binding evidence row.

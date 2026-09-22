@@ -435,6 +435,19 @@ pub async fn activate_policy_bundle(
     activated_by: ActorRowId,
 ) -> Result<(), RepoError> {
     lock_policy_jurisdiction(tx, bundle).await?;
+    let already_active = sqlx::query(
+        "SELECT 1
+         FROM policy_bundle_activations
+         WHERE policy_bundle_id = $1
+         LIMIT 1",
+    )
+    .bind(bundle.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some();
+    if already_active {
+        return Ok(());
+    }
     sqlx::query(
         "INSERT INTO policy_bundle_activations (policy_bundle_id, activated_by_actor_id)
          VALUES ($1, $2)",

@@ -63,6 +63,14 @@ async fn test_state(label: &str) -> Option<AppState> {
         .expect("reseed AR bundle idempotently");
     assert_eq!(reseeded.policy_bundle, seeded.policy_bundle);
     assert_eq!(reseeded.action_route, seeded.action_route);
+    let activation_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM policy_bundle_activations WHERE policy_bundle_id = $1",
+    )
+    .bind(seeded.policy_bundle.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(activation_count, 1);
 
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let store = FilesystemObjectStore::open(temp_dir.path()).expect("open object store");

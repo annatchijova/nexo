@@ -171,6 +171,16 @@ the existing non-invalidated preparation for the same evaluation, kind, and
 generator version. The API test repeats the request and asserts the same
 preparation id.
 
+### RT-024-18 — Replaying the same policy activation invalidated materials
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The activation repository function inserted a second activation row even when
+the exact bundle was already active. That replay fired the policy invalidation
+trigger and could stale unchanged preparations. Re-activating an already
+activated bundle is now an idempotent no-op; the seed test asserts exactly one
+activation after two startup calls.
+
 ### RT-024-17 — Policy activation could race preparation persistence
 
 **Level:** PLAUSIBLE HYPOTHESIS → HARDENED; concurrent induction deferred

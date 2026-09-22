@@ -97,6 +97,32 @@ create table ingestion_records (
     status              sandbox_status not null default 'pending'
 );
 
+create function referenced_ingestion_identity_is_immutable()
+returns trigger as $$
+begin
+    if exists (
+        select 1
+        from artifact_nodes
+        where ingestion_record_id = old.id
+    ) and (
+        new.case_id is distinct from old.case_id
+        or new.received_at is distinct from old.received_at
+        or new.declared_filename is distinct from old.declared_filename
+        or new.declared_mime is distinct from old.declared_mime
+        or new.byte_size is distinct from old.byte_size
+    ) then
+        raise exception
+            'ingestion record % identity is immutable after artifact binding',
+            old.id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger referenced_ingestion_identity_is_immutable_trigger
+    before update on ingestion_records
+    for each row execute function referenced_ingestion_identity_is_immutable();
+
 create index ingestion_records_case_id_idx on ingestion_records (case_id);
 
 -- ---------------------------------------------------------------------

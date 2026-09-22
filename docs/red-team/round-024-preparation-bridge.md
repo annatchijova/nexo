@@ -344,6 +344,16 @@ while a direct writer changed the acquisition channel, actor, detail, or
 recorded time behind that identity. Provenance rows are now append-only, with
 regression coverage for a direct detail update.
 
+### RT-024-37 — Bound ingestion metadata remained mutable
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** medium evidence-integrity boundary
+
+An artifact retained an `ingestion_record_id`, but a direct writer could change
+the record's declared filename, MIME, size, timestamp, or case afterward. The
+database now freezes those identity fields once an artifact binds the record;
+the sandbox status remains mutable for its lifecycle.
+
 ### RT-024-33 — Audit history was mutable by direct SQL
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

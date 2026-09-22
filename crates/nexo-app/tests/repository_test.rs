@@ -411,6 +411,19 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     assert_eq!(artifact.0, 1);
     assert_eq!(observation.0, 2);
 
+    let mut ingestion_update_tx = pool.begin().await.unwrap();
+    let ingestion_update = sqlx::query(
+        "UPDATE ingestion_records SET byte_size = 2048 WHERE id = $1",
+    )
+    .bind(ingestion.0)
+    .execute(&mut *ingestion_update_tx)
+    .await;
+    assert!(
+        ingestion_update.is_err(),
+        "bound ingestion identity must be immutable"
+    );
+    ingestion_update_tx.rollback().await.unwrap();
+
     let nodes = repository::list_case_node_ids(&pool, case).await.unwrap();
     assert_eq!(nodes, vec![1, 2]);
 }

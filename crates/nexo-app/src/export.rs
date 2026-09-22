@@ -135,6 +135,8 @@ pub fn write_export_with_limit(
         let object_path = temporary_root.join("objects").join(shard).join(&hex);
         fs::create_dir_all(object_path.parent().expect("object path has a parent"))?;
         fs::write(object_path, bytes)?;
+        sync_file(temporary_root.join("objects").join(shard).join(&hex))?;
+        sync_directory(temporary_root.join("objects").join(shard))?;
     }
     let manifest_json = json!({
         "schema_version": 1,
@@ -151,17 +153,33 @@ pub fn write_export_with_limit(
             })
         }).collect::<Vec<_>>(),
     });
-    fs::write(
-        temporary_root.join("manifest.json"),
-        serde_json::to_vec_pretty(&manifest_json)?,
-    )?;
+    let manifest_path = temporary_root.join("manifest.json");
+    fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest_json)?)?;
+    sync_file(&manifest_path)?;
+    sync_directory(temporary_root.join("objects"))?;
+    sync_directory(temporary_root)?;
     fs::rename(temporary_root, destination)?;
+    sync_directory(parent)?;
 
     Ok(ExportResult {
         directory: destination.to_path_buf(),
         manifest_digest,
         artifact_count: artifacts.len(),
     })
+}
+
+fn sync_file(path: impl AsRef<Path>) -> io::Result<()> {
+    fs::File::open(path)?.sync_all()
+}
+
+#[cfg(unix)]
+fn sync_directory(path: impl AsRef<Path>) -> io::Result<()> {
+    fs::File::open(path)?.sync_all()
+}
+
+#[cfg(not(unix))]
+fn sync_directory(_path: impl AsRef<Path>) -> io::Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]

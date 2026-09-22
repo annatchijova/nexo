@@ -35,7 +35,5 @@ for this round.
 1. `generated_at_unix_seconds` is caller-supplied. This is appropriate for a
    pure producer, but the future application command must source it from the
    server clock and must not accept it from HTTP input.
-2. Directory durability after a sudden power loss is not claimed: visibility
-   is atomic, but the producer does not `fsync` the directory after rename.
 
 No confirmed vulnerability was found in the current, non-HTTP composition.

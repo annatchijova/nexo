@@ -75,12 +75,16 @@ async fn test_state(label: &str) -> Option<AppState> {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let store = FilesystemObjectStore::open(temp_dir.path()).expect("open object store");
     std::mem::forget(temp_dir); // keep the directory alive for the test's duration
+    let export_root = tempfile::tempdir().expect("export temp dir");
+    let export_root_path = export_root.path().to_path_buf();
+    std::mem::forget(export_root);
 
     Some(AppState {
         pool,
         store: Arc::new(store),
         fixture: Arc::new(fixture),
         seeded,
+        export_root: export_root_path,
     })
 }
 
@@ -367,8 +371,10 @@ async fn full_flow_evidence_to_actionable_citation() {
     assert!(http_preparation_id > 0);
     assert_eq!(http_preparation["kind"], "draft_request");
     assert_eq!(http_preparation["status"], "prepared");
-    let export_root = tempfile::tempdir().unwrap();
-    let export_dir = export_root.path().join("preparation-export");
+    let export_dir = state
+        .export_root
+        .join(format!("case-{case_id}"))
+        .join(format!("preparation-{http_preparation_id}"));
     let exported = nexo_api::preparation::export_preparation(
         &state.pool,
         &state.store,
@@ -400,6 +406,62 @@ async fn full_flow_evidence_to_actionable_citation() {
     .await
     .unwrap();
     assert_eq!(repeated_export, exported);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{http_preparation_id}/export"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let export_response = body_json(response).await;
+    assert_eq!(export_response["status"], "exported");
+    assert_eq!(
+        export_response["manifest_digest"],
+        exported.manifest_digest.to_string()
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{http_preparation_id}/export/manifest"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let manifest = body_json(response).await;
+    let artifact_digest = manifest["artifacts"][0]["digest"].as_str().unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{http_preparation_id}/export/artifacts/{artifact_digest}"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!response.into_body().collect().await.unwrap().to_bytes().is_empty());
 
     let response = app
         .clone()

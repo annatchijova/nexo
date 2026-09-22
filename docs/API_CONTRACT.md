@@ -48,6 +48,9 @@ not leaked to a non-owner.
 | `POST` | `/v1/cases/{case_id}/evaluate` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate`, render and record the result. |
 | `GET` | `/v1/cases/{case_id}/evaluations` | List recorded evaluations, returning the same rendered JSON stored at evaluation time. |
 | `POST` | `/v1/cases/{case_id}/preparations` | Create a deterministic local `draft_request` from a current supported evaluation; never sends it. |
+| `POST` | `/v1/cases/{case_id}/preparations/{preparation_id}/export` | Materialize an owner-authorized preparation as a verifiable export and advance it to `exported`. |
+| `GET` | `/v1/cases/{case_id}/preparations/{preparation_id}/export/manifest` | Return the independently verified export manifest. |
+| `GET` | `/v1/cases/{case_id}/preparations/{preparation_id}/export/artifacts/{digest}` | Download one independently verified export artifact by its SHA-256 digest. |
 
 ### `POST /v1/cases/{case_id}/preparations`
 
@@ -67,6 +70,22 @@ silently reuse a row for different bytes.
 An old, unsupported, or stale evaluation returns `409`; an unsupported kind
 returns `422`. This endpoint creates local material only. It has no delivery,
 filing, signature, recipient, or transport capability.
+
+### Export and download endpoints
+
+`POST /v1/cases/{case_id}/preparations/{preparation_id}/export` uses the
+server-configured `NEXO_EXPORT_ROOT`; the client supplies no filesystem path.
+It is owner-authenticated, idempotent for an unchanged exported preparation,
+and returns `{"preparation_id": i64, "status": "exported",
+"manifest_digest": string, "artifact_count": usize}`. A missing, stale,
+tampered, or non-prepared material fails closed.
+
+The manifest endpoint returns the exact JSON consumed by `nexo-verify`. The
+artifact endpoint accepts only a 64-character SHA-256 digest, checks that the
+digest is named by the verified manifest, confines the resolved path to the
+export root, and re-hashes the bytes before returning them. Clients can
+reconstruct a standalone verifier input directory from these two endpoints;
+the API never accepts a caller-controlled path or filename.
 
 ### `POST /v1/cases/{case_id}/evidence`
 
@@ -166,8 +185,5 @@ equality afterward — never by reading a value out of the id.
 
 ## Non-goals (this round)
 
-- Public export endpoints remain deferred. The application layer now has an
-  internal, owner-checked export bridge; it is not exposed until destination
-  policy, download semantics, and lifecycle integration are specified.
 - A generic multi-bundle import/selection surface.
-- The web UI (Step 6) and independent verifier (Step 8).
+- The web UI (Step 6).

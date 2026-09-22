@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use nexo_api::{router, AppState};
 use nexo_app::object_store::FilesystemObjectStore;
@@ -12,6 +13,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("DATABASE_URL must be set (see scripts/run_api.sh)");
     let object_store_root =
         std::env::var("NEXO_OBJECT_STORE_ROOT").unwrap_or_else(|_| "./data/objects".to_string());
+    let export_root = PathBuf::from(
+        std::env::var("NEXO_EXPORT_ROOT").unwrap_or_else(|_| "./data/exports".to_string()),
+    );
     let bind_addr = std::env::var("NEXO_BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let bootstrap_owner_identity = std::env::var("NEXO_BOOTSTRAP_OWNER")
         .expect("NEXO_BOOTSTRAP_OWNER must be set to the single owner's bearer token/identity");
@@ -35,6 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: Arc::new(store),
         fixture: Arc::new(fixture),
         seeded,
+        export_root,
     };
 
     let app = router(state).layer(tower_http::trace::TraceLayer::new_for_http());

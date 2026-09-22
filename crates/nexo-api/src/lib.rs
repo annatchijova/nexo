@@ -13,6 +13,7 @@ pub mod preparation;
 pub mod projection;
 pub mod seed;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::routing::{get, post};
@@ -28,6 +29,7 @@ pub struct AppState {
     pub store: Arc<FilesystemObjectStore>,
     pub fixture: Arc<nexo_policy_ar::Fixture>,
     pub seeded: SeededArBundle,
+    pub export_root: PathBuf,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -53,6 +55,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/cases/{case_id}/preparations",
             post(handlers::prepare_case),
+        )
+        .route(
+            "/v1/cases/{case_id}/preparations/{preparation_id}/export/manifest",
+            get(handlers::read_export_manifest),
+        )
+        .route(
+            "/v1/cases/{case_id}/preparations/{preparation_id}/export",
+            post(handlers::export_preparation),
+        )
+        .route(
+            "/v1/cases/{case_id}/preparations/{preparation_id}/export/artifacts/{digest}",
+            get(handlers::read_export_artifact),
         )
         .with_state(state)
 }

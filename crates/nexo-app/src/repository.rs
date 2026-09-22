@@ -836,6 +836,25 @@ pub async fn preparation_status(pool: &Pool, preparation: i64) -> Result<Option<
     Ok(row.map(|row| row.get("status")))
 }
 
+pub async fn preparation_status_for_case(
+    pool: &Pool,
+    case: CaseRowId,
+    preparation: i64,
+) -> Result<Option<String>, RepoError> {
+    let row = sqlx::query(
+        "SELECT preparation.status::text AS status
+         FROM preparations preparation
+         JOIN action_evaluations evaluation
+           ON evaluation.id = preparation.action_evaluation_id
+         WHERE preparation.id = $1 AND evaluation.case_id = $2",
+    )
+    .bind(preparation)
+    .bind(case.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| row.get("status")))
+}
+
 #[derive(Debug)]
 pub struct PreparationExportBinding {
     pub id: i64,

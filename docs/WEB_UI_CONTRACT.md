@@ -45,7 +45,8 @@ origin as the API or configure an explicit equivalent proxy.
 
 ## Non-goals for this slice
 
-- No preparation/export UI exists until those API capabilities are defined.
+- Preparation/export UI is not implemented yet; the API capabilities exist but
+  must be surfaced with explicit preview and download affordances.
 - No artifact preview, OCR, parsing, or decompression occurs in the browser.
 - No credential-management claim is made beyond the API contract's
   single-owner bearer-token limitation.

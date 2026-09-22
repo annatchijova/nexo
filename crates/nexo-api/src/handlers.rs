@@ -1,11 +1,15 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::Response;
 use axum::Json;
 use chrono::{Datelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Component, Path as FsPath, PathBuf};
 
+use nexo_integrity::{hash_bytes, Sha256Digest};
 use nexo_app::repository::{self, CaseRowId};
 use nexo_core::evaluate;
 
@@ -251,6 +255,148 @@ pub async fn prepare_case(
         kind: "draft_request",
         status,
     }))
+}
+
+async fn verified_export_manifest(
+    state: &AppState,
+    case_id: i64,
+    preparation_id: i64,
+) -> Result<(PathBuf, Value), ApiError> {
+    let case = CaseRowId(case_id);
+    let status = repository::preparation_status_for_case(&state.pool, case, preparation_id)
+        .await
+        .map_err(internal("could not read export status"))?;
+    if status.as_deref() != Some("exported") {
+        return Err((StatusCode::CONFLICT, "preparation is not exported"));
+    }
+    let export_dir = state
+        .export_root
+        .join(format!("case-{case_id}"))
+        .join(format!("preparation-{preparation_id}"));
+    let manifest_path = export_dir.join("manifest.json");
+    nexo_verifier::verify_export(&manifest_path)
+        .map_err(|_| (StatusCode::CONFLICT, "export failed independent verification"))?;
+    let manifest = serde_json::from_slice(
+        &fs::read(&manifest_path)
+            .map_err(internal("could not read exported manifest"))?,
+    )
+    .map_err(internal("could not parse exported manifest"))?;
+    Ok((export_dir, manifest))
+}
+
+pub async fn read_export_manifest(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path((case_id, preparation_id)): Path<(i64, i64)>,
+) -> Result<Json<Value>, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+    let (_, manifest) = verified_export_manifest(&state, case_id, preparation_id).await?;
+    Ok(Json(manifest))
+}
+
+#[derive(Serialize)]
+pub struct ExportResponse {
+    pub preparation_id: i64,
+    pub status: &'static str,
+    pub manifest_digest: String,
+    pub artifact_count: usize,
+}
+
+pub async fn export_preparation(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path((case_id, preparation_id)): Path<(i64, i64)>,
+) -> Result<Json<ExportResponse>, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+    if preparation_id <= 0 {
+        return Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid preparation id"));
+    }
+    let destination = state
+        .export_root
+        .join(format!("case-{case_id}"))
+        .join(format!("preparation-{preparation_id}"));
+    let result = crate::preparation::export_preparation(
+        &state.pool,
+        &state.store,
+        actor,
+        case,
+        preparation_id,
+        destination,
+    )
+    .await
+    .map_err(|error| match error {
+        crate::preparation::PreparationVerificationError::PreparationNotFound => {
+            (StatusCode::NOT_FOUND, "preparation not found")
+        }
+        crate::preparation::PreparationVerificationError::PreparationNotPrepared
+        | crate::preparation::PreparationVerificationError::ExistingExportInvalid(_) => (
+            StatusCode::CONFLICT,
+            "preparation cannot be exported",
+        ),
+        _ => internal("could not export preparation")(error),
+    })?;
+    Ok(Json(ExportResponse {
+        preparation_id,
+        status: "exported",
+        manifest_digest: result.manifest_digest.to_string(),
+        artifact_count: result.artifact_count,
+    }))
+}
+
+pub async fn read_export_artifact(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+    Path((case_id, preparation_id, digest)): Path<(i64, i64, String)>,
+) -> Result<Response, ApiError> {
+    let case = CaseRowId(case_id);
+    authorize_case(&state.pool, case, actor).await?;
+    let expected = Sha256Digest::from_hex(&digest)
+        .map_err(|_| (StatusCode::UNPROCESSABLE_ENTITY, "invalid artifact digest"))?;
+    let (export_dir, manifest) = verified_export_manifest(&state, case_id, preparation_id).await?;
+    let artifact = manifest["artifacts"]
+        .as_array()
+        .and_then(|artifacts| {
+            artifacts.iter().find(|artifact| {
+                artifact["digest"].as_str() == Some(digest.as_str())
+            })
+        })
+        .ok_or((StatusCode::NOT_FOUND, "artifact not found in export"))?;
+    let relative = artifact["path"]
+        .as_str()
+        .ok_or((StatusCode::CONFLICT, "export artifact path is invalid"))?;
+    let relative_path = FsPath::new(relative);
+    if relative_path.is_absolute()
+        || relative_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err((StatusCode::CONFLICT, "export artifact path is invalid"));
+    }
+    let root = export_dir
+        .canonicalize()
+        .map_err(internal("could not access export directory"))?;
+    let artifact_path = export_dir.join(relative_path);
+    let canonical_artifact = artifact_path
+        .canonicalize()
+        .map_err(internal("could not access exported artifact"))?;
+    if !canonical_artifact.starts_with(&root) {
+        return Err((StatusCode::CONFLICT, "export artifact escaped export root"));
+    }
+    let bytes = fs::read(canonical_artifact)
+        .map_err(internal("could not read exported artifact"))?;
+    if hash_bytes(&bytes) != expected {
+        return Err((StatusCode::CONFLICT, "export artifact failed verification"));
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/octet-stream")
+        .body(axum::body::Body::from(bytes))
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build artifact response"))
 }
 
 pub async fn evaluate_case(

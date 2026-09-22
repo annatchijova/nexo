@@ -2,8 +2,10 @@
 //! preparation capability. It proves the authority boundary before material
 //! generation and persistence.
 
-use std::num::NonZeroU64;
 use std::collections::BTreeMap;
+use std::fs;
+use std::num::NonZeroU64;
+use std::path::Path;
 
 use chrono::Utc;
 use nexo_app::export::{self, ExportArtifact, ExportResult};
@@ -11,7 +13,7 @@ use nexo_app::object_store::{FilesystemObjectStore, ObjectStoreError};
 use nexo_app::repository::{self, ActionEvaluationRowId, CaseRowId, Pool, ProvenanceRowId};
 use nexo_core::{ActionOption, NodeId, VerifiedPreparationSnapshot};
 use nexo_integrity::{hash_bytes, seal, CanonicalValue, Sha256Digest};
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[derive(Debug)]
 pub enum PreparationVerificationError {
@@ -31,6 +33,7 @@ pub enum PreparationVerificationError {
     Export(export::ExportError),
     ExistingExportInvalid(nexo_verifier::VerifyError),
     ExportManifestMismatch,
+    ExportDestinationConflict,
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -394,16 +397,26 @@ pub async fn export_preparation(
         .map_err(|_| PreparationVerificationError::InvalidExportIdentity)?;
     let bytes = store.get(output_digest)?;
     let label = format!("preparation/{}", binding.id);
-    let result = export::write_export(
-        destination,
-        case_reference,
-        Utc::now().timestamp(),
-        policy_bundle_digest,
-        &[ExportArtifact {
-            label: &label,
-            bytes: &bytes,
-        }],
-    )?;
+    let result = if destination.exists() {
+        recover_existing_export(
+            destination,
+            case_reference,
+            &label,
+            output_digest,
+            policy_bundle_digest,
+        )?
+    } else {
+        export::write_export(
+            destination,
+            case_reference,
+            Utc::now().timestamp(),
+            policy_bundle_digest,
+            &[ExportArtifact {
+                label: &label,
+                bytes: &bytes,
+            }],
+        )?
+    };
     let manifest_digest = repository::upsert_digest(
         &mut tx,
         "sha256",
@@ -415,4 +428,101 @@ pub async fn export_preparation(
     }
     tx.commit().await.map_err(repository::RepoError::from)?;
     Ok(result)
+}
+
+fn recover_existing_export(
+    destination: &Path,
+    case_reference: u64,
+    expected_label: &str,
+    output_digest: Sha256Digest,
+    policy_bundle_digest: Sha256Digest,
+) -> Result<ExportResult, PreparationVerificationError> {
+    let manifest_path = destination.join("manifest.json");
+    let report = nexo_verifier::verify_export(&manifest_path)
+        .map_err(PreparationVerificationError::ExistingExportInvalid)?;
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(&manifest_path).map_err(|_| PreparationVerificationError::ExportDestinationConflict)?,
+    )
+    .map_err(|_| PreparationVerificationError::ExportDestinationConflict)?;
+    let artifacts = manifest["artifacts"].as_array().ok_or(
+        PreparationVerificationError::ExportDestinationConflict,
+    )?;
+    if report.case_reference != case_reference
+        || manifest["policy_bundle_digest"].as_str() != Some(&policy_bundle_digest.to_string())
+        || artifacts.len() != 1
+        || artifacts[0]["label"].as_str() != Some(expected_label)
+        || artifacts[0]["digest"].as_str() != Some(&output_digest.to_string())
+    {
+        return Err(PreparationVerificationError::ExportDestinationConflict);
+    }
+    Ok(ExportResult {
+        directory: destination.to_path_buf(),
+        manifest_digest: report.manifest_digest,
+        artifact_count: report.artifact_count,
+    })
+}
+
+#[cfg(test)]
+mod export_recovery_tests {
+    use super::*;
+
+    #[test]
+    fn adopts_matching_existing_export_after_filesystem_first_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("export");
+        let bytes = b"prepared bytes";
+        let output_digest = hash_bytes(bytes);
+        let policy_digest = hash_bytes(b"policy");
+        export::write_export(
+            &destination,
+            7,
+            1_700_000_000,
+            policy_digest,
+            &[ExportArtifact {
+                label: "preparation/42",
+                bytes,
+            }],
+        )
+        .unwrap();
+
+        let recovered = recover_existing_export(
+            &destination,
+            7,
+            "preparation/42",
+            output_digest,
+            policy_digest,
+        )
+        .unwrap();
+        assert_eq!(recovered.artifact_count, 1);
+    }
+
+    #[test]
+    fn rejects_existing_export_with_different_preparation_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("export");
+        let policy_digest = hash_bytes(b"policy");
+        export::write_export(
+            &destination,
+            7,
+            1_700_000_000,
+            policy_digest,
+            &[ExportArtifact {
+                label: "preparation/99",
+                bytes: b"prepared bytes",
+            }],
+        )
+        .unwrap();
+
+        let result = recover_existing_export(
+            &destination,
+            7,
+            "preparation/42",
+            hash_bytes(b"prepared bytes"),
+            policy_digest,
+        );
+        assert!(matches!(
+            result,
+            Err(PreparationVerificationError::ExportDestinationConflict)
+        ));
+    }
 }

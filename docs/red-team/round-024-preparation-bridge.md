@@ -564,3 +564,15 @@ therefore persist a sealed decision under a policy definition that had never
 been authorized for use. A database trigger now requires an activated bundle
 for evaluation inserts and updates, with a regression test using an otherwise
 valid unactivated route.
+
+### RT-024-51 — Activation chronology was caller-controlled
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high policy-selection boundary
+
+`activated_at` had a default but direct SQL could still provide an arbitrary
+past or future timestamp. Current-bundle selection orders activation history by
+that value, so a caller could reorder policy history without changing any
+bundle row. A `BEFORE INSERT` trigger now replaces caller input with the
+database transaction timestamp, with regression coverage for an explicitly
+backdated activation.

@@ -676,6 +676,18 @@ create table policy_bundle_activations (
 create index policy_bundle_activations_bundle_idx
     on policy_bundle_activations (policy_bundle_id);
 
+create function policy_bundle_activation_timestamp_is_server_assigned()
+returns trigger as $$
+begin
+    new.activated_at := current_timestamp;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger policy_bundle_activation_timestamp_is_server_assigned_trigger
+    before insert on policy_bundle_activations
+    for each row execute function policy_bundle_activation_timestamp_is_server_assigned();
+
 create function activated_policy_bundle_requires_claim()
 returns trigger as $$
 begin

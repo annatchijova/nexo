@@ -869,6 +869,58 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         tx.commit().await.unwrap();
         (route, empty_route_bundle)
     };
+    let timestamp_bundle = {
+        let mut tx = pool.begin().await.unwrap();
+        let bundle = repository::insert_policy_bundle(
+            &mut tx,
+            "AR",
+            1,
+            "ar-server-timestamp",
+            chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(),
+            None,
+            digest,
+            digest,
+            provenance,
+        )
+        .await
+        .unwrap();
+        repository::insert_normative_claim(
+            &mut tx,
+            bundle,
+            "server timestamp claim",
+            "AR",
+            chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(),
+            None,
+            &[(source, "primary")],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        bundle
+    };
+    let mut timestamp_activation_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO policy_bundle_activations
+            (policy_bundle_id, activated_at, activated_by_actor_id)
+         VALUES ($1, TIMESTAMPTZ '2000-01-01 00:00:00+00', $2)",
+    )
+    .bind(timestamp_bundle.0)
+    .bind(actor.0)
+    .execute(&mut *timestamp_activation_tx)
+    .await
+    .unwrap();
+    timestamp_activation_tx.commit().await.unwrap();
+    let activation_time: chrono::DateTime<Utc> = sqlx::query_scalar(
+        "SELECT activated_at FROM policy_bundle_activations WHERE policy_bundle_id = $1",
+    )
+    .bind(timestamp_bundle.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        activation_time > Utc::now() - chrono::Duration::minutes(1),
+        "activation timestamps must come from the database clock"
+    );
     let mut unactivated_evaluation_tx = pool.begin().await.unwrap();
     let unactivated_evaluation = repository::insert_action_evaluation(
         &mut unactivated_evaluation_tx,

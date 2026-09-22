@@ -31,7 +31,9 @@ type Evaluation = {
 };
 
 const state = {
-  apiBase: localStorage.getItem("nexo-api-base") ?? "",
+  language: localStorage.getItem("nexo-language") === "es" ? "es" : "en",
+  theme: localStorage.getItem("nexo-theme") === "light" ? "light" : "dark",
+  apiBase: localStorage.getItem("nexo-api-base") ?? import.meta.env.VITE_NEXO_API_BASE ?? "",
   token: localStorage.getItem("nexo-token") ?? "",
   caseId: Number(localStorage.getItem("nexo-case-id")) || null,
   detail: null as CaseDetail | null,
@@ -39,6 +41,14 @@ const state = {
   evaluationId: null as number | null,
   preparation: null as Preparation | null,
 };
+
+function text(english: string, spanish: string): string {
+  return state.language === "es" ? spanish : english;
+}
+
+function applyTheme(): void {
+  document.documentElement.dataset.theme = state.theme;
+}
 
 const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("NEXO app root is missing");
@@ -136,19 +146,20 @@ function renderPreparation(): string {
 }
 
 function render(): void {
+  applyTheme();
   app.innerHTML = `<main class="shell">
-    <header class="topbar"><div><span class="eyebrow">VERIFIABLE DIGITAL-RIGHTS CASE GRAPH</span><h1>NEXO</h1></div><span class="status-dot">Local workspace</span></header>
-    <section class="setup panel"><div><h2>Connect your workspace</h2><p class="muted">NEXO renders evidence and evaluation results. It does not file or send anything externally.</p></div><form id="connection-form" class="connection-form">
-      <label>API base <input id="api-base" value="${escapeHtml(state.apiBase)}" placeholder="Same origin or http://127.0.0.1:8080" /></label>
-      <label>Bearer token <input id="token" type="password" value="${escapeHtml(state.token)}" autocomplete="off" required /></label>
-      <button type="submit">Save connection</button>
+    <header class="topbar"><div><span class="eyebrow">${text("VERIFIABLE DIGITAL-RIGHTS CASE GRAPH", "GRAFO VERIFICABLE DE DERECHOS DIGITALES")}</span><h1>NEXO</h1></div><div class="topbar-actions"><span class="status-dot">${text("Local workspace", "Espacio local")}</span><button id="language-toggle" class="utility-button" type="button">${state.language === "en" ? "ES" : "EN"}</button><button id="theme-toggle" class="utility-button" type="button">${state.theme === "dark" ? text("Light mode", "Modo claro") : text("Dark mode", "Modo oscuro")}</button></div></header>
+    <section class="setup panel"><div><h2>${text("Connect your workspace", "Conectá tu espacio de trabajo")}</h2><p class="muted">${text("NEXO renders evidence and evaluation results. It does not file or send anything externally.", "NEXO muestra evidencia y resultados de evaluación. No presenta ni envía nada externamente.")}</p></div><form id="connection-form" class="connection-form">
+      <label>${text("API base", "Base de API")} <input id="api-base" value="${escapeHtml(state.apiBase)}" placeholder="Same origin or http://127.0.0.1:8080" /></label>
+      <label>${text("Bearer token", "Token bearer")} <input id="token" type="password" value="${escapeHtml(state.token)}" autocomplete="off" required /></label>
+      <button type="submit">${text("Save connection", "Guardar conexión")}</button>
     </form></section>
     <section class="workspace-grid">
-      <div class="column"><section class="panel"><div class="section-heading"><div><span class="eyebrow">CASE</span><h2>${state.caseId ? `Case ${state.caseId}` : "Start a case"}</h2></div><button id="new-case" class="secondary">New case</button></div><div id="case-feedback" class="feedback" aria-live="polite"></div>${renderTimeline()}</section>
-      <section class="panel"><span class="eyebrow">EVIDENCE INTAKE</span><h2>Add what happened</h2><form id="evidence-form"><label>Filename <input id="filename" placeholder="message.txt" /></label><label>Plain-text evidence <textarea id="evidence-text" rows="7" placeholder="Paste the relevant evidence here"></textarea></label><button type="submit">Send to sandbox</button></form><p class="muted small">The API stores the original bytes and runs extraction in the sandbox. Rejections remain visible.</p></section></div>
-      <div class="column"><section class="panel"><span class="eyebrow">OWNER ASSERTION</span><h2>Confirm a fact</h2><p class="muted">A confirmation is a user assertion, not an extracted observation.</p><button id="confirm-assertion" class="secondary" type="button">Record confirmed assertion</button></section>
-      <section class="panel"><div class="section-heading"><div><span class="eyebrow">EVALUATION</span><h2>Why is this shown?</h2></div><button id="evaluate" type="button">Evaluate case</button></div><div id="evaluation-output" aria-live="polite">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">PREPARATION / EXPORT</span><h3>Keep the proof portable</h3>${renderPreparation()}</div></section></div>
-    </section><footer><span>NEXO stops at preparation. A human remains the actor for any external legal act.</span></footer>
+      <div class="column"><section class="panel"><div class="section-heading"><div><span class="eyebrow">${text("CASE", "CASO")}</span><h2>${state.caseId ? `${text("Case", "Caso")} ${state.caseId}` : text("Start a case", "Iniciar un caso")}</h2></div><button id="new-case" class="secondary">${text("New case", "Nuevo caso")}</button></div><div id="case-feedback" class="feedback" aria-live="polite"></div>${renderTimeline()}</section>
+      <section class="panel"><span class="eyebrow">${text("EVIDENCE INTAKE", "INGRESO DE EVIDENCIA")}</span><h2>${text("Add what happened", "Agregá lo que pasó")}</h2><form id="evidence-form"><label>${text("Filename", "Nombre de archivo")} <input id="filename" placeholder="message.txt" /></label><label>${text("Plain-text evidence", "Evidencia en texto plano")} <textarea id="evidence-text" rows="7" placeholder="${text("Paste the relevant evidence here", "Pegá aquí la evidencia relevante")}"></textarea></label><button type="submit">${text("Send to sandbox", "Enviar al sandbox")}</button></form><p class="muted small">${text("The API stores the original bytes and runs extraction in the sandbox. Rejections remain visible.", "La API guarda los bytes originales y extrae la información en el sandbox. Las rechazos siguen visibles.")}</p></section></div>
+      <div class="column"><section class="panel"><span class="eyebrow">${text("OWNER ASSERTION", "AFIRMACIÓN DE LA TITULAR")}</span><h2>${text("Confirm a fact", "Confirmá un hecho")}</h2><p class="muted">${text("A confirmation is a user assertion, not an extracted observation.", "Una confirmación es una afirmación de la usuaria, no una observación extraída.")}</p><button id="confirm-assertion" class="secondary" type="button">${text("Record confirmed assertion", "Registrar afirmación confirmada")}</button></section>
+      <section class="panel"><div class="section-heading"><div><span class="eyebrow">${text("EVALUATION", "EVALUACIÓN")}</span><h2>${text("Why is this shown?", "¿Por qué aparece esto?")}</h2></div><button id="evaluate" type="button">${text("Evaluate case", "Evaluar caso")}</button></div><div id="evaluation-output" aria-live="polite">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">${text("PREPARATION / EXPORT", "PREPARACIÓN / EXPORTACIÓN")}</span><h3>${text("Keep the proof portable", "Conservá la prueba portable")}</h3>${renderPreparation()}</div></section></div>
+    </section><footer><span>${text("NEXO stops at preparation. A human remains the actor for any external legal act.", "NEXO se detiene en la preparación. Una persona sigue siendo responsable de cualquier acto legal externo.")}</span></footer>
   </main>`;
   bindEvents();
 }
@@ -190,6 +201,16 @@ async function loadCase(): Promise<void> {
 }
 
 function bindEvents(): void {
+  document.querySelector<HTMLButtonElement>("#language-toggle")?.addEventListener("click", () => {
+    state.language = state.language === "en" ? "es" : "en";
+    localStorage.setItem("nexo-language", state.language);
+    render();
+  });
+  document.querySelector<HTMLButtonElement>("#theme-toggle")?.addEventListener("click", () => {
+    state.theme = state.theme === "dark" ? "light" : "dark";
+    localStorage.setItem("nexo-theme", state.theme);
+    render();
+  });
   document.querySelector<HTMLFormElement>("#connection-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     state.apiBase = document.querySelector<HTMLInputElement>("#api-base")?.value.trim() ?? "";

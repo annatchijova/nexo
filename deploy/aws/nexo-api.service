@@ -1,0 +1,21 @@
+[Unit]
+Description=NEXO API
+After=network-online.target docker.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nexo
+Group=nexo
+WorkingDirectory=/opt/nexo
+EnvironmentFile=/etc/nexo/nexo-api.env
+ExecStart=/opt/nexo/nexo-api
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/nexo
+
+[Install]
+WantedBy=multi-user.target

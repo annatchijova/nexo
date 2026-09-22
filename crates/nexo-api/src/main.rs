@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use nexo_api::{router, AppState};
 use nexo_app::object_store::FilesystemObjectStore;
 use nexo_app::repository::{self, ActorRowId};
+use axum::http::HeaderValue;
+use tower_http::cors::CorsLayer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,6 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = std::env::var("NEXO_BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let bootstrap_owner_credential = std::env::var("NEXO_BOOTSTRAP_OWNER")
         .expect("NEXO_BOOTSTRAP_OWNER must be set to the single owner's bearer token");
+    let web_origin = std::env::var("NEXO_WEB_ORIGIN")
+        .unwrap_or_else(|_| "http://127.0.0.1:5173".to_string());
 
     let pool = repository::connect(&database_url).await?;
     repository::apply_migration(&pool).await?;
@@ -42,7 +46,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         export_root,
     };
 
-    let app = router(state).layer(tower_http::trace::TraceLayer::new_for_http());
+    let origin = web_origin.parse::<HeaderValue>()?;
+    let cors = CorsLayer::new()
+        .allow_origin(origin)
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+    let app = router(state)
+        .layer(cors)
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!(%bind_addr, "nexo-api listening");

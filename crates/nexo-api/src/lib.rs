@@ -34,6 +34,7 @@ pub struct AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/healthz", get(healthz))
         .route("/v1/cases", post(handlers::create_case))
         .route("/v1/cases/{case_id}", get(handlers::read_case))
         .route(
@@ -69,4 +70,8 @@ pub fn router(state: AppState) -> Router {
             get(handlers::read_export_artifact),
         )
         .with_state(state)
+}
+
+async fn healthz() -> &'static str {
+    "ok"
 }

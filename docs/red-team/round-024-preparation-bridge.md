@@ -171,6 +171,15 @@ the existing non-invalidated preparation for the same evaluation, kind, and
 generator version. The API test repeats the request and asserts the same
 preparation id.
 
+### RT-024-19 — Retry response could downgrade exported state
+
+**Level:** CONFIRMED BY INDUCTION → REMEDIATED
+
+The endpoint always serialized `status: prepared`, even when an idempotent
+retry returned an already-exported row. The response now reads the durable
+state and preserves `exported`; the API test marks the first row exported before
+retrying and asserts that state is returned.
+
 ### RT-024-18 — Replaying the same policy activation invalidated materials
 
 **Level:** CONFIRMED BY INDUCTION → REMEDIATED

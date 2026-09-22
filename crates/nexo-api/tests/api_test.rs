@@ -349,6 +349,13 @@ async fn full_flow_evidence_to_actionable_citation() {
     assert!(http_preparation_id > 0);
     assert_eq!(http_preparation["kind"], "draft_request");
     assert_eq!(http_preparation["status"], "prepared");
+    sqlx::query(
+        "UPDATE preparations SET status = 'exported'::preparation_status WHERE id = $1",
+    )
+    .bind(http_preparation_id)
+    .execute(&state.pool)
+    .await
+    .unwrap();
 
     let response = app
         .clone()
@@ -375,6 +382,7 @@ async fn full_flow_evidence_to_actionable_citation() {
         retried_preparation["preparation_id"],
         http_preparation["preparation_id"]
     );
+    assert_eq!(retried_preparation["status"], "exported");
 
     sqlx::query("DELETE FROM evaluation_receipts WHERE action_evaluation_id = $1")
         .bind(evaluation_id)

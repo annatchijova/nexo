@@ -825,6 +825,16 @@ pub async fn find_active_preparation(
     Ok(row.map(|row| row.get("id")))
 }
 
+pub async fn preparation_status(pool: &Pool, preparation: i64) -> Result<Option<String>, RepoError> {
+    let row = sqlx::query(
+        "SELECT status::text AS status FROM preparations WHERE id = $1",
+    )
+    .bind(preparation)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| row.get("status")))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_preparation(
     tx: &mut Tx<'_>,

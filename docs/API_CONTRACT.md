@@ -59,6 +59,8 @@ deterministic JSON draft with provenance. The response is
 `{"preparation_id": i64, "kind": "draft_request", "status": "prepared"}`.
 Repeating the same request while that preparation remains current is
 idempotent and returns the existing preparation id.
+If that existing material is already `exported`, the response preserves and
+reports `exported`; it never presents an exported material as merely prepared.
 
 An old, unsupported, or stale evaluation returns `409`; an unsupported kind
 returns `422`. This endpoint creates local material only. It has no delivery,

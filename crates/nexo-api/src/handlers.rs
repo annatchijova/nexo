@@ -173,7 +173,7 @@ pub struct PrepareRequest {
 pub struct PrepareResponse {
     pub preparation_id: i64,
     pub kind: &'static str,
-    pub status: &'static str,
+    pub status: String,
 }
 
 pub async fn prepare_case(
@@ -242,10 +242,14 @@ pub async fn prepare_case(
         ),
         _ => internal("could not persist preparation")(error),
     })?;
+    let status = repository::preparation_status(&state.pool, preparation_id)
+        .await
+        .map_err(internal("could not read preparation status"))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "preparation disappeared"))?;
     Ok(Json(PrepareResponse {
         preparation_id,
         kind: "draft_request",
-        status: "prepared",
+        status,
     }))
 }
 

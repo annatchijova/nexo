@@ -306,6 +306,26 @@ create table user_assertion_nodes (
     foreign key (case_id, node_id) references case_nodes (case_id, node_id)
 );
 
+create function user_assertion_actor_matches_case_owner()
+returns trigger as $$
+declare
+    case_owner_actor_id bigint;
+begin
+    select c.owner_actor_id into case_owner_actor_id
+    from cases c
+    where c.id = new.case_id;
+    if case_owner_actor_id is distinct from new.actor_id then
+        raise exception
+            'user assertion actor does not own case %', new.case_id;
+    end if;
+    return new;
+end;
+$$ language plpgsql;
+
+create trigger user_assertion_actor_matches_case_owner_trigger
+    before insert or update on user_assertion_nodes
+    for each row execute function user_assertion_actor_matches_case_owner();
+
 create table derived_fact_nodes (
     case_id                     bigint not null,
     node_id                     bigint not null,

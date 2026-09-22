@@ -385,6 +385,16 @@ writer could reassign ownership and thereby change who the application would
 authorize to read or mutate the entire case. The database now rejects owner
 changes after creation, with a regression test using a second actor.
 
+### RT-024-42 — User assertions could be attributed across owners
+
+**Level:** CONFIRMED BY INDUCTION → HARDENED
+**Severity:** high authorization/evidence boundary
+
+The assertion payload referenced an actor row but did not bind that actor to
+the case owner. A direct writer could therefore place another identity's
+statement inside the case. The database now requires the assertion actor to be
+the immutable case owner, with a regression test using a second actor.
+
 ### RT-024-41 — Authentication identity could be rewritten directly
 
 **Level:** CONFIRMED BY INDUCTION → HARDENED

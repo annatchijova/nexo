@@ -74,6 +74,10 @@ The database also rejects reassignment of `owner_actor_id` after case
 creation; changing access requires an explicit future sharing model, not a
 mutation of the case root.
 
+User assertions are likewise bound to that immutable case owner; another
+actor cannot be attributed as the declaring identity without a future audited
+sharing model.
+
 `ActorId` here is the same opaque identity type referenced by
 `UserAssertionNode` in `nexo-core`; the application layer is what gives that
 id a durable row and an external identity (how the actor authenticates),

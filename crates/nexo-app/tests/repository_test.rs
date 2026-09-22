@@ -74,6 +74,30 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assert!(owner_update.is_err(), "case ownership must be immutable");
     owner_update_tx.rollback().await.unwrap();
 
+    let mut assertion_actor_tx = pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO case_nodes (case_id, node_id, kind)
+         VALUES ($1, 4, 'user_assertion')",
+    )
+    .bind(case.0)
+    .execute(&mut *assertion_actor_tx)
+    .await
+    .unwrap();
+    let assertion_actor_insert = sqlx::query(
+        "INSERT INTO user_assertion_nodes
+            (case_id, node_id, actor_id, recorded_at, confirmation)
+         VALUES ($1, 4, $2, now(), 'confirmed'::confirmation_state)",
+    )
+    .bind(case.0)
+    .bind(other_actor.0)
+    .execute(&mut *assertion_actor_tx)
+    .await;
+    assert!(
+        assertion_actor_insert.is_err(),
+        "a user assertion must be attributed to the case owner"
+    );
+    assertion_actor_tx.rollback().await.unwrap();
+
     let mut audit_insert_tx = pool.begin().await.unwrap();
     let audit_row = sqlx::query(
         "INSERT INTO audit_log

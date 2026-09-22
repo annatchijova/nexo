@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use nexo_integrity::{hash_bytes, Manifest, ManifestEntry, Sha256Digest};
+use nexo_integrity::{Manifest, ManifestEntry, Sha256Digest, hash_bytes};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -38,20 +38,32 @@ pub enum VerifyError {
     ReadManifest(std::io::Error),
     ParseManifest(serde_json::Error),
     UnknownSchema(u64),
-    InvalidDigest { field: &'static str },
+    InvalidDigest {
+        field: &'static str,
+    },
     InvalidManifest(String),
-    ManifestDigestMismatch { expected: String, actual: String },
+    ManifestDigestMismatch {
+        expected: String,
+        actual: String,
+    },
     InvalidArtifactPath(String),
     ArtifactOutsideExport(String),
-    ReadArtifact { path: PathBuf, source: std::io::Error },
-    ArtifactDigestMismatch { path: PathBuf, expected: String, actual: String },
+    ReadArtifact {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    ArtifactDigestMismatch {
+        path: PathBuf,
+        expected: String,
+        actual: String,
+    },
 }
 
 pub fn verify_export(manifest_path: impl AsRef<Path>) -> Result<VerificationReport, VerifyError> {
     let manifest_path = manifest_path.as_ref();
     let manifest_bytes = fs::read(manifest_path).map_err(VerifyError::ReadManifest)?;
-    let export: ExportManifest = serde_json::from_slice(&manifest_bytes)
-        .map_err(VerifyError::ParseManifest)?;
+    let export: ExportManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(VerifyError::ParseManifest)?;
     if export.schema_version != 1 {
         return Err(VerifyError::UnknownSchema(export.schema_version));
     }
@@ -93,19 +105,23 @@ pub fn verify_export(manifest_path: impl AsRef<Path>) -> Result<VerificationRepo
     for artifact in &export.artifacts {
         let relative = Path::new(&artifact.path);
         if relative.is_absolute()
-            || relative
-                .components()
-                .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
         {
             return Err(VerifyError::InvalidArtifactPath(artifact.path.clone()));
         }
         let artifact_path = export_root.join(relative);
-        let canonical_artifact = artifact_path
-            .canonicalize()
-            .map_err(|source| VerifyError::ReadArtifact {
-                path: artifact_path.clone(),
-                source,
-            })?;
+        let canonical_artifact =
+            artifact_path
+                .canonicalize()
+                .map_err(|source| VerifyError::ReadArtifact {
+                    path: artifact_path.clone(),
+                    source,
+                })?;
         if !canonical_artifact.starts_with(&export_root) {
             return Err(VerifyError::ArtifactOutsideExport(artifact.path.clone()));
         }
@@ -173,7 +189,11 @@ mod tests {
             "manifest_digest": if manifest_digest.is_empty() { manifest.seal().to_string() } else { manifest_digest.to_owned() },
             "artifacts": [{"label": "artifact/1", "digest": artifact_digest.to_string(), "path": artifact_path}],
         });
-        fs::write(root.join("manifest.json"), serde_json::to_vec(&json).unwrap()).unwrap();
+        fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec(&json).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]

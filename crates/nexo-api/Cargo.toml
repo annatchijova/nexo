@@ -18,6 +18,7 @@ nexo-integrity = { path = "../nexo-integrity" }
 nexo-sandbox = { path = "../nexo-sandbox" }
 nexo-extraction = { path = "../nexo-extraction" }
 nexo-policy-ar = { path = "../nexo-policy-ar" }
+nexo-verifier = { path = "../nexo-verifier" }
 axum = "0.8.9"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -30,6 +31,5 @@ sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "chrono", "
 
 [dev-dependencies]
 http-body-util = "0.1.5"
-nexo-verifier = { path = "../nexo-verifier" }
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }

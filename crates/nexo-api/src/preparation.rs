@@ -29,6 +29,7 @@ pub enum PreparationVerificationError {
     PreparationNotPrepared,
     InvalidExportIdentity,
     Export(export::ExportError),
+    ExistingExportInvalid(nexo_verifier::VerifyError),
 }
 
 pub fn action_fingerprint(action: &ActionOption) -> String {
@@ -363,6 +364,16 @@ pub async fn export_preparation(
     let binding = repository::lock_preparation_for_export(&mut tx, case, preparation)
         .await?
         .ok_or(PreparationVerificationError::PreparationNotFound)?;
+    let destination = destination.as_ref();
+    if binding.status == "exported" {
+        let report = nexo_verifier::verify_export(destination.join("manifest.json"))
+            .map_err(PreparationVerificationError::ExistingExportInvalid)?;
+        return Ok(ExportResult {
+            directory: destination.to_path_buf(),
+            manifest_digest: report.manifest_digest,
+            artifact_count: report.artifact_count,
+        });
+    }
     if binding.status != "prepared" {
         return Err(PreparationVerificationError::PreparationNotPrepared);
     }

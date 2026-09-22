@@ -389,6 +389,17 @@ async fn full_flow_evidence_to_actionable_citation() {
             .await
             .unwrap();
     assert_eq!(exported_status, "exported");
+    let repeated_export = nexo_api::preparation::export_preparation(
+        &state.pool,
+        &state.store,
+        owner,
+        repository::CaseRowId(case_id),
+        http_preparation_id,
+        &export_dir,
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated_export, exported);
 
     let response = app
         .clone()

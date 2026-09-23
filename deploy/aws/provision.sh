@@ -49,6 +49,13 @@ dnf install -y docker postgresql16-server postgresql16 gcc gcc-c++ make \
 systemctl enable --now docker
 if [ ! -d /var/lib/pgsql/data/base ]; then
   postgresql-setup --initdb
+  # AL2023's default pg_hba.conf uses `ident` for TCP connections to
+  # 127.0.0.1/::1, which rejects nexo-api's password-authenticated
+  # DATABASE_URL outright ("Ident authentication failed for user
+  # \"nexo\"") -- confirmed by actually provisioning and watching the
+  # service fail on its very first start. scram-sha-256 is what the role
+  # created below is actually given a password for.
+  sed -i 's/ident$/scram-sha-256/' /var/lib/pgsql/data/pg_hba.conf
 fi
 systemctl enable --now postgresql
 

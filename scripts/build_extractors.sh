@@ -11,6 +11,10 @@ echo "== nexo-extractor-plaintext =="
 cargo build --release --target x86_64-unknown-linux-musl -p nexo-extractor-plaintext
 docker build -t nexo-extractor-plaintext:local -f crates/nexo-extractor-plaintext/Dockerfile .
 
+echo "== nexo-extractor-eml =="
+cargo build --release --target x86_64-unknown-linux-musl -p nexo-extractor-eml
+docker build -t nexo-extractor-eml:local -f crates/nexo-extractor-eml/Dockerfile .
+
 echo "== test-only hostile images (nexo-sandbox's own test suite) =="
 docker build -t nexo-sandbox-test-sleep:local crates/nexo-sandbox/testdata/hostile-sleep
 

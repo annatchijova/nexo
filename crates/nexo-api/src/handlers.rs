@@ -106,6 +106,15 @@ pub async fn read_case(
 pub struct AddEvidenceRequest {
     pub filename: Option<String>,
     pub text: String,
+    /// Which sandboxed extractor to route this evidence through:
+    /// `"plain_text"` (default, when omitted) or `"eml"`. This only
+    /// selects which extractor image runs — the extractor itself never
+    /// trusts this or `filename` for anything beyond routing, and rejects
+    /// hostile or malformed content as a bounded failure regardless of
+    /// what was claimed here (`docs/EXTRACTOR_EML_CONTRACT.md`,
+    /// `docs/EXTRACTOR_PLAINTEXT_CONTRACT.md`).
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -124,16 +133,34 @@ pub async fn add_evidence(
     let case = CaseRowId(case_id);
     authorize_case(&state.pool, case, actor).await?;
 
-    let outcome = crate::evidence::ingest_plaintext_evidence(
-        &state.pool,
-        &state.store,
-        case,
-        actor,
-        request.filename.as_deref(),
-        request.text.as_bytes(),
-    )
-    .await
-    .map_err(internal("could not ingest evidence"))?;
+    let outcome = match request.kind.as_deref().unwrap_or("plain_text") {
+        "plain_text" => crate::evidence::ingest_plaintext_evidence(
+            &state.pool,
+            &state.store,
+            case,
+            actor,
+            request.filename.as_deref(),
+            request.text.as_bytes(),
+        )
+        .await
+        .map_err(internal("could not ingest evidence"))?,
+        "eml" => crate::evidence::ingest_eml_evidence(
+            &state.pool,
+            &state.store,
+            case,
+            actor,
+            request.filename.as_deref(),
+            request.text.as_bytes(),
+        )
+        .await
+        .map_err(internal("could not ingest evidence"))?,
+        _ => {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "only plain_text and eml evidence kinds are supported",
+            ))
+        }
+    };
 
     Ok(Json(AddEvidenceResponse {
         artifact_node_id: outcome.artifact_node_id,

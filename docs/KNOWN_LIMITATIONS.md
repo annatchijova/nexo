@@ -13,21 +13,29 @@ convention as the Technical README: **RUNTIME-CONFIRMED** (an actual command
 was run this session), **CODE FACT** (verified by reading the live source),
 **PLAUSIBLE HYPOTHESIS** (not independently verified this session).
 
-## Evidence intake is text-only today
+## PDF and image/OCR evidence intake are not built
 
-`nexo-extraction` and `nexo-extractor-plaintext` ship exactly one extractor:
-plain text (CODE FACT — `crates/nexo-extraction`, `crates/nexo-extractor-plaintext`
-contain no other extractor crate). Email (`.eml`), PDF, and image/OCR
-extraction, all named in the original build plan, are not built. In
-practice this means a person can paste or upload plain text as evidence
-today, but not attach a `.eml` export, a PDF, or a screenshot for OCR — they
-would need to transcribe that content into text first.
+`nexo-extraction` ships two extractors: plain text
+(`crates/nexo-extractor-plaintext`) and email
+(`crates/nexo-extractor-eml`, RFC 5322 plus a bounded MIME subset — CODE
+FACT, see [`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)). PDF and
+image/OCR extraction, both named in the original build plan, are not built.
+In practice this means a person can paste or upload plain text, or attach a
+raw `.eml` message, as evidence today, but not attach a PDF or a screenshot
+for OCR — they would need to transcribe that content into text or forward
+it as an email first.
 
-Closing this gap means adding one extractor crate per format inside the
-existing sandbox boundary (`docs/SANDBOX.md`), each with its own contract
-naming supported formats and rejection behavior, per the "First
-implementation gate" convention already used for the plaintext extractor
-(`docs/EXTRACTOR_PLAINTEXT_CONTRACT.md`).
+The `.eml` extractor's own non-goals are its own limitations, not restated
+here: only the first `text/plain` part of a message is read (attachments
+and nested multipart are not extracted), an HTML-only message with no
+`text/plain` alternative is a bounded failure, and only UTF-8/US-ASCII
+charsets are supported — full list in
+[`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)'s "Non-goals".
+
+Closing the PDF/OCR gap means adding one extractor crate per format inside
+the existing sandbox boundary (`docs/SANDBOX.md`), each with its own
+contract naming supported formats and rejection behavior, per the "First
+implementation gate" convention both existing extractors already follow.
 
 ## The web UI is a single dense page, not the full case-timeline experience
 
@@ -59,6 +67,23 @@ that sequencing has not happened yet, so no US bundle work has begun.
 
 ## Resolved since the previous audit
 
+- **`.eml` evidence intake.** `crates/nexo-extractor-eml` is a new,
+  hand-rolled, zero-dependency sandboxed extractor: RFC 5322 headers
+  (Date/From/To/Subject, unfolded), plus the decoded first `text/plain`
+  part of a plain or multipart body (quoted-printable and base64
+  supported). `POST /v1/cases/{case_id}/evidence` now accepts
+  `"kind": "eml"` to route evidence through it instead of the plain-text
+  extractor. RUNTIME-CONFIRMED at three layers: 13 unit tests in the
+  extractor binary itself, 5 adapter tests against the real built image in
+  `crates/nexo-extraction`, and two full HTTP-through-Docker-through-database
+  tests in `crates/nexo-api/tests/api_test.rs`
+  (`eml_evidence_is_extracted_into_header_and_body_observations`,
+  `eml_evidence_with_unsupported_encoding_is_a_bounded_rejection`) —
+  including a check that its `header:*` locators are genuinely produced by
+  the eml extractor and not a silently-ignored `kind` falling back to the
+  plain-text one. See [`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)
+  for the full contract, including what it still does not handle
+  (attachments, nested multipart, non-UTF-8 charsets).
 - **`evidence_package` preparation.** `ArtifactSummary` / `list_case_artifacts`
   in `crates/nexo-app/src/repository.rs` previously had no caller anywhere in
   the workspace. It is now the read path `POST

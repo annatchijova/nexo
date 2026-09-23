@@ -9,7 +9,10 @@
 use chrono::Utc;
 use nexo_app::object_store::FilesystemObjectStore;
 use nexo_app::repository::{self, ActorRowId, CaseRowId, Pool};
-use nexo_extraction::{extract_plaintext, ExtractionAdapterError, PlaintextExtraction};
+use nexo_extraction::{
+    extract_eml, extract_plaintext, EmlExtraction, ExtractionAdapterError, ObservationCandidate,
+    PlaintextExtraction,
+};
 use nexo_sandbox::SandboxLimits;
 
 #[derive(Debug)]
@@ -19,7 +22,7 @@ pub enum IngestError {
     Extraction(ExtractionAdapterError),
     /// The blocking task running the sandboxed extractor panicked or was
     /// cancelled — surfaced distinctly from a normal extraction failure,
-    /// which is a typed `PlaintextExtraction::Failure`, not this.
+    /// which is a typed bounded failure, not this.
     ExtractionTaskFailed,
 }
 
@@ -53,6 +56,33 @@ pub struct IngestOutcome {
     pub rejection_reason: Option<String>,
 }
 
+/// The two extractors' results converge to this shape before the shared
+/// persistence path below — both are already "a bounded list of candidate
+/// observations, or a bounded named failure," just produced by different
+/// sandboxed binaries for different input formats.
+enum Extraction {
+    Observations(Vec<ObservationCandidate>),
+    Failure(String),
+}
+
+impl From<PlaintextExtraction> for Extraction {
+    fn from(value: PlaintextExtraction) -> Self {
+        match value {
+            PlaintextExtraction::Observations(items) => Extraction::Observations(items),
+            PlaintextExtraction::Failure(reason) => Extraction::Failure(reason),
+        }
+    }
+}
+
+impl From<EmlExtraction> for Extraction {
+    fn from(value: EmlExtraction) -> Self {
+        match value {
+            EmlExtraction::Observations(items) => Extraction::Observations(items),
+            EmlExtraction::Failure(reason) => Extraction::Failure(reason),
+        }
+    }
+}
+
 /// Ingests one piece of plain-text evidence for `case`, owned by `actor`.
 /// Writes the bytes to the object store first (so they are durable even if
 /// extraction fails), then runs the sandboxed plaintext extractor, and
@@ -65,6 +95,70 @@ pub async fn ingest_plaintext_evidence(
     declared_filename: Option<&str>,
     bytes: &[u8],
 ) -> Result<IngestOutcome, IngestError> {
+    let owned_bytes = bytes.to_vec();
+    ingest_evidence(
+        pool,
+        store,
+        case,
+        actor,
+        declared_filename,
+        "text/plain",
+        "nexo-extractor-plaintext",
+        bytes,
+        move || extract_plaintext(&owned_bytes, &SandboxLimits::conservative_default()).map(Extraction::from),
+    )
+    .await
+}
+
+/// Ingests one `.eml` message (RFC 5322, a bounded subset of MIME) as
+/// evidence for `case`, owned by `actor`. Same durability and audit shape
+/// as [`ingest_plaintext_evidence`]; only the extractor and the declared
+/// MIME type differ — see `docs/EXTRACTOR_EML_CONTRACT.md`.
+pub async fn ingest_eml_evidence(
+    pool: &Pool,
+    store: &FilesystemObjectStore,
+    case: CaseRowId,
+    actor: ActorRowId,
+    declared_filename: Option<&str>,
+    bytes: &[u8],
+) -> Result<IngestOutcome, IngestError> {
+    let owned_bytes = bytes.to_vec();
+    ingest_evidence(
+        pool,
+        store,
+        case,
+        actor,
+        declared_filename,
+        "message/rfc822",
+        "nexo-extractor-eml",
+        bytes,
+        move || extract_eml(&owned_bytes, &SandboxLimits::conservative_default()).map(Extraction::from),
+    )
+    .await
+}
+
+/// Shared durability, sandboxed-extraction dispatch, and audit path for
+/// every evidence extractor: write bytes to the object store and record
+/// the artifact node *before* extraction runs (so the artifact is durable
+/// even if extraction fails), then run `run_extraction` on a
+/// blocking-safe thread (it shells out to `docker` and blocks on the
+/// child process), then record either observation nodes or a bounded
+/// rejection reason. `run_extraction` itself is what `extract_fn` calls.
+#[allow(clippy::too_many_arguments)]
+async fn ingest_evidence<F>(
+    pool: &Pool,
+    store: &FilesystemObjectStore,
+    case: CaseRowId,
+    actor: ActorRowId,
+    declared_filename: Option<&str>,
+    declared_mime: &str,
+    tool_version_name: &str,
+    bytes: &[u8],
+    extract_fn: F,
+) -> Result<IngestOutcome, IngestError>
+where
+    F: FnOnce() -> Result<Extraction, ExtractionAdapterError> + Send + 'static,
+{
     // Not spawn_blocking'd like the sandboxed extraction below: this is a
     // local filesystem write, not a multi-second subprocess, so the
     // worst-case stall is small. Revisit if artifact sizes or storage
@@ -88,7 +182,7 @@ pub async fn ingest_plaintext_evidence(
         case,
         now,
         declared_filename,
-        Some("text/plain"),
+        Some(declared_mime),
         bytes.len() as i64,
         "pending",
     )
@@ -118,24 +212,20 @@ pub async fn ingest_plaintext_evidence(
     .map_err(repository::RepoError::from)?;
     tx.commit().await?;
 
-    // extract_plaintext is synchronous (it shells out to `docker` and
+    // Sandboxed extraction is synchronous (it shells out to `docker` and
     // blocks on the child process, per nexo-sandbox::run_extraction) — run
     // it on a blocking-safe thread so a slow/hostile artifact cannot stall
     // this async runtime's worker threads and every other in-flight
     // request along with it.
-    let owned_bytes = bytes.to_vec();
-    let extraction = tokio::task::spawn_blocking(move || {
-        extract_plaintext(&owned_bytes, &SandboxLimits::conservative_default())
-    })
-    .await
-    .map_err(|_| IngestError::ExtractionTaskFailed)??;
+    let extraction = tokio::task::spawn_blocking(extract_fn)
+        .await
+        .map_err(|_| IngestError::ExtractionTaskFailed)??;
 
     match extraction {
-        PlaintextExtraction::Observations(items) => {
+        Extraction::Observations(items) => {
             let mut tx = pool.begin().await?;
             repository::set_ingestion_status(&mut tx, ingestion, "accepted").await?;
-            let tool_version =
-                repository::ensure_tool_version(&mut tx, "nexo-extractor-plaintext", 1).await?;
+            let tool_version = repository::ensure_tool_version(&mut tx, tool_version_name, 1).await?;
             for item in &items {
                 repository::insert_observation_node(
                     &mut tx,
@@ -167,7 +257,7 @@ pub async fn ingest_plaintext_evidence(
                 rejection_reason: None,
             })
         }
-        PlaintextExtraction::Failure(reason) => {
+        Extraction::Failure(reason) => {
             let mut tx = pool.begin().await?;
             repository::set_ingestion_status(&mut tx, ingestion, "rejected").await?;
             nexo_app::audit::append(

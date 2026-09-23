@@ -33,6 +33,16 @@ fn docker_ready() -> bool {
         .unwrap_or(false)
 }
 
+fn eml_extractor_ready() -> bool {
+    std::process::Command::new("docker")
+        .args(["image", "inspect", "nexo-extractor-eml:local"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 async fn test_state(label: &str) -> Option<AppState> {
     let _ = tracing_subscriber::fmt::try_init();
     let url = match std::env::var("DATABASE_URL") {
@@ -1014,6 +1024,136 @@ async fn invalid_utf8_evidence_is_a_typed_rejection_not_a_crash() {
     let evidence = body_json(response).await;
     assert_eq!(evidence["observation_count"], 0);
     assert!(evidence["rejection_reason"].is_null());
+}
+
+/// `kind: "eml"` must route evidence through the sandboxed email
+/// extractor, not the plain-text one: a raw `.eml` message parses into
+/// header observations (who/when/subject) and body-line observations,
+/// exactly what `crates/nexo-extraction::extract_eml` already proves at
+/// the adapter layer — this test proves the API actually wires that
+/// selection through, since `kind` used to be silently ignored (every
+/// `POST .../evidence` ran the plain-text extractor regardless).
+#[tokio::test]
+async fn eml_evidence_is_extracted_into_header_and_body_observations() {
+    if !docker_ready() || !eml_extractor_ready() {
+        eprintln!("skipping: docker/nexo-extractor-eml:local not available");
+        return;
+    }
+    let Some(state) = test_state("eml-evidence").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "eml-evidence").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let message = "From: alice@example.com\r\nTo: bob@example.com\r\nSubject: Solicito acceso\r\nDate: Mon, 1 Jan 2024 00:00:00 +0000\r\n\r\nSolicito acceso a mis datos.\r\n";
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "mail.eml", "text": message, "kind": "eml"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        panic!("eml evidence returned {status}: {}", String::from_utf8_lossy(&body));
+    }
+    let evidence = body_json(response).await;
+    // 4 headers (date, from, to, subject) + 1 body line.
+    assert_eq!(evidence["observation_count"], 5);
+    assert!(evidence["rejection_reason"].is_null());
+
+    // Locators are the distinguishing evidence that the *eml* extractor
+    // ran, not the plain-text one: a `header:from` locator can only come
+    // from `nexo-extractor-eml`, since `nexo-extractor-plaintext` only
+    // ever emits `line:<n>` locators — if `kind` had been silently
+    // ignored (routing every request to the plain-text extractor
+    // regardless), the observation *count* here would coincidentally
+    // still be 5, but these locators would read `line:1`..`line:5`
+    // instead.
+    let artifacts = repository::list_case_artifacts(&state.pool, repository::CaseRowId(case_id))
+        .await
+        .unwrap();
+    assert_eq!(artifacts.len(), 1);
+    assert!(artifacts[0]
+        .observation_locators
+        .contains(&"header:from".to_string()));
+    assert!(artifacts[0]
+        .observation_locators
+        .contains(&"body:line:1".to_string()));
+}
+
+/// An email whose Content-Transfer-Encoding this extractor does not
+/// support is a bounded, typed rejection surfaced through the same
+/// `rejection_reason` field the plain-text extractor uses — never an HTTP
+/// error and never silently treated as "no observations."
+#[tokio::test]
+async fn eml_evidence_with_unsupported_encoding_is_a_bounded_rejection() {
+    if !docker_ready() || !eml_extractor_ready() {
+        eprintln!("skipping: docker/nexo-extractor-eml:local not available");
+        return;
+    }
+    let Some(state) = test_state("eml-rejection").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "eml-rejection").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let message = "Content-Transfer-Encoding: x-proprietary\r\n\r\nbody\r\n";
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "mail.eml", "text": message, "kind": "eml"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let evidence = body_json(response).await;
+    assert_eq!(evidence["observation_count"], 0);
+    assert_eq!(evidence["rejection_reason"], "unsupported_transfer_encoding");
 }
 
 #[tokio::test]

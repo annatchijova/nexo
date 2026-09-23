@@ -81,8 +81,9 @@ nexo/
 │   ├── nexo-integrity/                   # canonical serialization, SHA-256 hashing, audit-chain primitives
 │   ├── nexo-verifier/                    # standalone export verifier — no server, no database dependency
 │   ├── nexo-sandbox/                     # isolated evidence-extraction worker boundary
-│   ├── nexo-extraction/                  # extractor trait / typed extraction result
-│   ├── nexo-extractor-plaintext/         # plain-text extractor — the only extractor shipped today
+│   ├── nexo-extraction/                  # typed extraction results / adapters over the sandboxed extractors
+│   ├── nexo-extractor-plaintext/         # plain-text / chat-export extractor
+│   ├── nexo-extractor-eml/               # email (.eml, RFC 5322 + bounded MIME) extractor
 │   └── nexo-report/                      # Markdown/HTML/PDF report rendering
 ├── web/src/main.ts                       # TypeScript web client — single-page evidence/evaluation/export flow
 ├── docs/
@@ -122,7 +123,7 @@ health check:
 | DELETE | `/credentials/current` | revoke the credential in use |
 | POST | `/cases` | create a case |
 | GET | `/cases/{case_id}` | read a case |
-| POST | `/cases/{case_id}/evidence` | add evidence (routed through the sandbox) |
+| POST | `/cases/{case_id}/evidence` | add evidence — `kind: "plain_text"` (default) or `kind: "eml"`, routed through the matching sandboxed extractor |
 | POST | `/cases/{case_id}/assertions` | add a user assertion |
 | POST | `/cases/{case_id}/evaluate` | request an evaluation |
 | GET | `/cases/{case_id}/evaluations` | list evaluations |
@@ -159,6 +160,8 @@ cargo test --workspace              # unit + integration tests across the worksp
 cargo clippy --workspace --all-targets
 scripts/test_schema.sh              # SQL-level invariants, requires a local PostgreSQL
 scripts/test_repository.sh          # PostgreSQL-backed repository integration tests
+scripts/build_extractors.sh         # builds the sandboxed extractor Docker images
+scripts/test_api.sh                 # full HTTP-through-Docker-through-database tests
 ```
 
 ## Status
@@ -175,32 +178,31 @@ evaluation paths (CODE FACT: [`POLICY_BUNDLE_AR_DATA_ACCESS_CONTRACT.md`](POLICY
 [`POLICY_BUNDLE_AR_DIGITAL_VIOLENCE_CONTRACT.md`](POLICY_BUNDLE_AR_DIGITAL_VIOLENCE_CONTRACT.md);
 `crates/nexo-policy-ar/src/lib.rs`, `crates/nexo-policy-ar-digital-violence/src/lib.rs`).
 The HTTP API covers the full case lifecycle: credential issuance and
-revocation, case creation, evidence intake, evaluation, Markdown/HTML/PDF
-reports, two preparation kinds (`draft_request`, `evidence_package`), and
-export (CODE FACT: route table above, read from `crates/nexo-api/src/lib.rs`).
-The audit chain has gone through three iterations, the latest adding an
-authenticated chain-state witness
-([`AUDIT_CHAIN_V1_CONTRACT.md`](AUDIT_CHAIN_V1_CONTRACT.md),
+revocation, case creation, evidence intake through two sandboxed extractors
+(plain text and `.eml`), evaluation, Markdown/HTML/PDF reports, two
+preparation kinds (`draft_request`, `evidence_package`), and export (CODE
+FACT: route table above, read from `crates/nexo-api/src/lib.rs`). The audit
+chain has gone through three iterations, the latest adding an authenticated
+chain-state witness ([`AUDIT_CHAIN_V1_CONTRACT.md`](AUDIT_CHAIN_V1_CONTRACT.md),
 [`AUDIT_CHAIN_V2_HMAC_CONTRACT.md`](AUDIT_CHAIN_V2_HMAC_CONTRACT.md)).
 RUNTIME-CONFIRMED this session: `cargo test --workspace` passes with no
 failures; `cargo clippy --workspace --all-targets` is clean; the
 PostgreSQL-backed repository tests in
 `crates/nexo-app/tests/repository_test.rs` pass against a live local database
 via `scripts/test_schema.sh` and `scripts/test_repository.sh`; the full
-evidence-to-preparation-to-export path, including the `evidence_package` kind,
-passes end-to-end against real Docker-sandboxed extraction via
-`scripts/test_api.sh`. The adversarial-review record through this point is in
-[`red-team/`](red-team/) up to round 032.
+evidence-to-preparation-to-export path, including the `evidence_package`
+kind and `.eml` evidence intake, passes end-to-end against real
+Docker-sandboxed extraction via `scripts/test_api.sh`. The adversarial-review
+record through this point is in [`red-team/`](red-team/) up to round 032.
 
-**The exhaustive, dedicated account of what is not yet built — the
-extraction worker's format coverage, the web UI's scope, deployment status,
-and the United States bundle — is in
-[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)**, which also records what was
-resolved this session (the `evidence_package` preparation, and a flaky
-audit-export test fixed along the way). It is not summarized here a second
-time; read it directly. Argentina and United States policy semantics remain
-bundle-specific; NEXO does not claim universal legal correctness or provide
-legal advice.
+**The exhaustive, dedicated account of what is not yet built — PDF and
+image/OCR extraction, the web UI's scope, deployment status, and the United
+States bundle — is in [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)**,
+which also records what was resolved this session (`.eml` evidence intake,
+the `evidence_package` preparation, and a flaky audit-export test fixed
+along the way). It is not summarized here a second time; read it directly.
+Argentina and United States policy semantics remain bundle-specific; NEXO
+does not claim universal legal correctness or provide legal advice.
 
 ### Web demo
 

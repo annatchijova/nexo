@@ -120,23 +120,31 @@ without one's activation invalidating another's.
 | `POST` | `/v1/cases/{case_id}/assertions` | Record a user assertion (confirmed or not). |
 | `POST` | `/v1/cases/{case_id}/evaluate?bundle=<key>` | Build a `CaseProjection` from durable case state, run the real `nexo_core::evaluate` against the named bundle (default `ley-25326`), render and record the result. |
 | `GET` | `/v1/cases/{case_id}/evaluations` | List recorded evaluations, returning the same rendered JSON stored at evaluation time. |
-| `POST` | `/v1/cases/{case_id}/preparations` | Create a deterministic local `draft_request` from a current supported evaluation; never sends it. |
+| `POST` | `/v1/cases/{case_id}/preparations` | Create a deterministic local `draft_request` or `evidence_package` from a current supported evaluation; never sends it. |
 | `POST` | `/v1/cases/{case_id}/preparations/{preparation_id}/export` | Materialize an owner-authorized preparation as a verifiable export and advance it to `exported`. |
 | `GET` | `/v1/cases/{case_id}/preparations/{preparation_id}/export/manifest` | Return the independently verified export manifest. |
 | `GET` | `/v1/cases/{case_id}/preparations/{preparation_id}/export/artifacts/{digest}` | Download one independently verified export artifact by its SHA-256 digest. |
 
 ### `POST /v1/cases/{case_id}/preparations`
 
-Body: `{"evaluation_id": i64, "kind": "draft_request"}`. The API accepts
-no recipient, endpoint, credential, or caller-supplied output bytes. It
-rebuilds the current projection, requires the selected receipt to remain
-supported and bound to the same action and input manifest, then stores the
-prepared material with provenance. The prepared material is a real
-human-readable document — `nexo_report::render_markdown` over the same
-rendered result `GET .../evaluations` returns, not a raw JSON dump: a
-"draft request" a person cannot open and read was never actually a draft
-of anything. The response is
-`{"preparation_id": i64, "kind": "draft_request", "status": "prepared"}`.
+Body: `{"evaluation_id": i64, "kind": "draft_request" | "evidence_package"}`.
+The API accepts no recipient, endpoint, credential, or caller-supplied
+output bytes. It rebuilds the current projection, requires the selected
+receipt to remain supported and bound to the same action and input
+manifest, then stores the prepared material with provenance. Both kinds
+render a real human-readable Markdown document, never a raw JSON dump:
+
+- `draft_request`: `nexo_report::render_markdown` over the same rendered
+  result `GET .../evaluations` returns — a "draft request" a person cannot
+  open and read was never actually a draft of anything.
+- `evidence_package`: a self-verifying index of the case's artifacts
+  (`nexo_app::repository::list_case_artifacts`), naming each artifact's
+  real SHA-256 digest next to its ingestion-declared (unverified) filename
+  and MIME type, and the locators of every observation extracted from it —
+  see `docs/PREPARATION_CONTRACT.md`.
+
+The response is
+`{"preparation_id": i64, "kind": "draft_request" | "evidence_package", "status": "prepared"}`.
 Repeating the same request while that preparation remains current is
 idempotent and returns the existing preparation id.
 If that existing material is already `exported`, the response preserves and
@@ -166,10 +174,15 @@ the API never accepts a caller-controlled path or filename.
 
 ### `POST /v1/cases/{case_id}/evidence`
 
-Body: `{"filename": string | null, "text": string}`. Runs the real
-`nexo-sandbox` + `nexo-extractor-plaintext` pipeline (Docker, hardened per
-`docs/SANDBOX.md`) on a blocking-safe task so a slow or hostile artifact
-cannot stall the async runtime. Response:
+Body: `{"filename": string | null, "text": string, "kind": "plain_text" | "eml" | null}`.
+`kind` selects which sandboxed extractor runs — `"plain_text"` (the default
+when omitted) or `"eml"`, per `docs/EXTRACTOR_PLAINTEXT_CONTRACT.md` and
+`docs/EXTRACTOR_EML_CONTRACT.md`. `kind` and `filename` only route the
+request to an extractor image; neither is trusted by the extractor itself,
+which rejects hostile or malformed content as a bounded failure regardless
+of what was claimed. Runs the real `nexo-sandbox` + extractor pipeline
+(Docker, hardened per `docs/SANDBOX.md`) on a blocking-safe task so a slow
+or hostile artifact cannot stall the async runtime. Response:
 `{"artifact_node_id": i64, "observation_count": usize, "rejection_reason": string | null}`.
 The artifact is always durably recorded, even when extraction rejects it —
 evidence is never silently dropped because it failed extraction.
@@ -328,7 +341,10 @@ of byte-identical content, all resolving to the same row, none failing).
 
 - A generic multi-bundle import/selection surface.
 - The web UI (Step 6).
-- `evidence_package` and `export` as directly requestable `preparations`
-  kinds — `nexo_core::PreparationKind` defines all three
-  (`docs/PREPARATION_CONTRACT.md`), but this endpoint only accepts
-  `draft_request` today; requesting `evidence_package` returns `422`.
+- `Export` as a directly requestable `preparations` `kind` in its own
+  right — `nexo_core::PreparationKind` defines three
+  (`docs/PREPARATION_CONTRACT.md`); `draft_request` and `evidence_package`
+  are both requestable through `POST .../preparations` as of this doc,
+  but `Export` is reached only through the separate
+  `POST .../preparations/{id}/export` endpoint above, not as a `kind`
+  value on the preparation-creation call.

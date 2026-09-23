@@ -87,11 +87,64 @@ pub fn extract_plaintext(
     })
 }
 
+pub const EML_EXTRACTOR_IMAGE: &str = "nexo-extractor-eml:local";
+
+/// One candidate extracted from an email: either a message header NEXO
+/// chose to surface as evidence (`header:from`, `header:to`,
+/// `header:subject`, `header:date`) or a line of the decoded text body
+/// (`body:line:<n>`) — see `docs/EXTRACTOR_EML_CONTRACT.md`. Reuses
+/// `ObservationCandidate`'s shape since both are "a locator plus the exact
+/// text at it," but kept as its own extraction result type (`EmlExtraction`
+/// below) rather than folded into `PlaintextExtraction`, since the two
+/// extractors accept different input formats and fail for different typed
+/// reasons.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum EmlExtraction {
+    Observations(Vec<ObservationCandidate>),
+    /// A bounded, named rejection reason — see
+    /// `docs/EXTRACTOR_EML_CONTRACT.md` for the full list (`invalid_utf8`,
+    /// `missing_boundary`, `no_text_part_found`, `unsupported_charset`,
+    /// `unsupported_transfer_encoding`, ...). Never a partial or
+    /// best-effort result.
+    Failure(String),
+}
+
+pub fn extract_eml(
+    input_bytes: &[u8],
+    limits: &SandboxLimits,
+) -> Result<EmlExtraction, ExtractionAdapterError> {
+    let raw_bytes = run_extraction(EML_EXTRACTOR_IMAGE, input_bytes, limits)?;
+    let raw: RawResult =
+        serde_json::from_slice(&raw_bytes).map_err(ExtractionAdapterError::MalformedResult)?;
+    Ok(match raw {
+        RawResult::Observations { items } => EmlExtraction::Observations(
+            items
+                .into_iter()
+                .map(|item| ObservationCandidate {
+                    locator: item.locator,
+                    text: item.text,
+                })
+                .collect(),
+        ),
+        RawResult::Failure { reason } => EmlExtraction::Failure(reason),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::process::{Command, Stdio};
     use std::time::Duration;
+
+    fn image_available_named(image: &str) -> bool {
+        Command::new("docker")
+            .args(["image", "inspect", image])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
 
     fn image_available() -> bool {
         Command::new("docker")
@@ -174,5 +227,74 @@ mod tests {
         }
         let result = extract_plaintext(b"", &limits()).unwrap();
         assert_eq!(result, PlaintextExtraction::Observations(vec![]));
+    }
+
+    #[test]
+    fn eml_message_produces_header_and_body_observations() {
+        if !image_available_named(EML_EXTRACTOR_IMAGE) {
+            eprintln!(
+                "skipping: {EML_EXTRACTOR_IMAGE} not built \
+                 (see crates/nexo-extractor-eml/Dockerfile)"
+            );
+            return;
+        }
+        let message = b"From: alice@example.com\r\nTo: bob@example.com\r\nSubject: Hola\r\nDate: Mon, 1 Jan 2024 00:00:00 +0000\r\n\r\nHola Bob.\r\n";
+        let result = extract_eml(message, &limits()).unwrap();
+        assert_eq!(
+            result,
+            EmlExtraction::Observations(vec![
+                ObservationCandidate { locator: "header:date".into(), text: "Mon, 1 Jan 2024 00:00:00 +0000".into() },
+                ObservationCandidate { locator: "header:from".into(), text: "alice@example.com".into() },
+                ObservationCandidate { locator: "header:to".into(), text: "bob@example.com".into() },
+                ObservationCandidate { locator: "header:subject".into(), text: "Hola".into() },
+                ObservationCandidate { locator: "body:line:1".into(), text: "Hola Bob.".into() },
+            ])
+        );
+    }
+
+    #[test]
+    fn eml_invalid_utf8_is_a_bounded_failure_not_a_crash() {
+        if !image_available_named(EML_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {EML_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let input: &[u8] = &[0xff, 0xfe, b'n', b'o', b't', b' ', b'u', b't', b'f', b'8'];
+        let result = extract_eml(input, &limits()).unwrap();
+        assert_eq!(result, EmlExtraction::Failure("invalid_utf8".into()));
+    }
+
+    #[test]
+    fn eml_oversized_input_is_a_bounded_failure() {
+        if !image_available_named(EML_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {EML_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let oversized = vec![b'a'; 25 * 1024 * 1024 + 1];
+        let result = extract_eml(&oversized, &limits()).unwrap();
+        assert_eq!(result, EmlExtraction::Failure("input_too_large".into()));
+    }
+
+    #[test]
+    fn eml_unsupported_transfer_encoding_is_a_bounded_failure() {
+        if !image_available_named(EML_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {EML_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let message = b"Content-Transfer-Encoding: x-proprietary\r\n\r\nbody\r\n";
+        let result = extract_eml(message, &limits()).unwrap();
+        assert_eq!(
+            result,
+            EmlExtraction::Failure("unsupported_transfer_encoding".into())
+        );
+    }
+
+    #[test]
+    fn eml_empty_input_produces_an_empty_observation_list_not_a_failure() {
+        if !image_available_named(EML_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {EML_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let result = extract_eml(b"", &limits()).unwrap();
+        assert_eq!(result, EmlExtraction::Observations(vec![]));
     }
 }

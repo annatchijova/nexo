@@ -1,0 +1,19 @@
+[package]
+name = "nexo-extractor-eml"
+description = "Sandboxed email (.eml / RFC 5322) extractor. Runs inside the SANDBOX.md worker boundary only; never linked into the API process."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nexo-extractor-eml"
+path = "src/main.rs"
+
+# Deliberately zero dependencies, same reasoning as nexo-extractor-plaintext:
+# this binary runs against hostile bytes inside the sandbox boundary of
+# docs/SANDBOX.md. Header unfolding, MIME boundary splitting, and
+# quoted-printable/base64 decoding are all hand-rolled below rather than
+# pulling in a MIME-parsing supply chain to run against untrusted input.
+[dependencies]

@@ -51,15 +51,43 @@ pass (contrast, keyboard navigation, screen-reader labels), which matters
 here specifically because this is evidence a person may need to use under
 stress.
 
-## Personal deployment is prepared, not running
+## Personal deployment is prepared and locally validated, not yet running on AWS
 
-[`../deploy/aws/README.md`](../deploy/aws/README.md) documents the install
-order for a single-tenant AWS instance (EC2, PostgreSQL, the Docker
-extractor sandbox, TLS, backups). This is a PLAUSIBLE HYPOTHESIS, not
-RUNTIME-CONFIRMED: no live instance was reached or checked this session.
-The Vercel-hosted web demo currently has no backend behind it — see the
-Technical README's Status section for exactly what the demo can and cannot
-do as a result.
+[`../deploy/aws/README.md`](../deploy/aws/README.md) and
+[`../deploy/aws/provision.sh`](../deploy/aws/provision.sh) document and
+automate the install order for a single-tenant AWS instance (EC2,
+PostgreSQL, the Docker extractor sandbox, TLS via
+[`../deploy/aws/Caddyfile`](../deploy/aws/Caddyfile), backups).
+
+What is RUNTIME-CONFIRMED this session, precisely, so the boundary is
+exact: `cargo build --release -p nexo-api` was built and run for real
+inside a fresh Amazon Linux 2023 container (`docker run amazonlinux:2023`)
+— package installation (`dnf install docker postgresql16-server ...`),
+the pinned Rust toolchain, and the release build all completed cleanly, and
+the resulting binary's `ldd` output resolves with no missing libraries.
+Separately (on the host, not in the AL2023 container), the release binary
+was run with the exact production-shaped environment file
+`provision.sh` generates — including `NEXO_AUDIT_HMAC_KEY`, which this
+session found was missing from the *previous* version of this document
+even though `nexo_app::audit::append` requires it for every mutating
+endpoint, meaning a deployment that followed the old instructions literally
+would have booted and then failed on the first evidence upload. Against
+that real release binary, this session ran the complete path over real
+HTTP — `/healthz`, both seeded bundles, evidence intake in all three kinds
+(`plain_text`, `eml`, `pdf`), an assertion, an evaluation reaching
+`actionable`/`supported`, both preparation kinds
+(`draft_request`, `evidence_package`), export, and independent verification
+of that export with the real `nexo-verify` CLI — all successful.
+
+What remains a PLAUSIBLE HYPOTHESIS, not RUNTIME-CONFIRMED: `postgresql-setup
+--initdb`, `systemctl enable`, and the `useradd`/`usermod` steps in
+`provision.sh` were not run against real systemd (a plain container has no
+systemd as PID 1) — these are CODE FACT, standard, well-established
+RHEL/AL commands, not independently exercised this session. No EC2 instance
+has actually been created, and no domain/TLS certificate has actually been
+issued. The Vercel-hosted web demo currently has no backend behind it — see
+the Technical README's Status section for exactly what the demo can and
+cannot do as a result.
 
 ## The United States bundle has not started
 

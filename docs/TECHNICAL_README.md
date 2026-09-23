@@ -94,7 +94,7 @@ nexo/
 │   ├── architecture/                     # rendered + editable architecture diagram
 │   ├── TECHNICAL_README.md               # this document
 │   └── KNOWN_LIMITATIONS.md              # exhaustive, dedicated account of current gaps
-├── deploy/aws/README.md                  # single-tenant AWS deployment preparation
+├── deploy/aws/                           # single-tenant AWS deployment: README, provision.sh, Caddyfile, systemd unit
 └── scripts/                              # test_schema.sh, test_repository.sh, run_api.sh, build_extractors.sh
 ```
 
@@ -226,8 +226,15 @@ The current frontend is published at [nexo-web-sigma.vercel.app](https://nexo-we
 The Vercel project currently hosts the UI only. Case creation, evidence
 ingestion, evaluation, preparation, export, artifact downloads, and hash
 verification require the NEXO API, PostgreSQL, persistent object storage, and
-the Docker extractor sandbox. The AWS deployment preparation is documented in
-[`../deploy/aws/README.md`](../deploy/aws/README.md).
+the Docker extractor sandbox. The AWS deployment is documented and automated
+in [`../deploy/aws/README.md`](../deploy/aws/README.md) and
+[`../deploy/aws/provision.sh`](../deploy/aws/provision.sh) — the exact
+extent to which that path has actually been exercised (a real Amazon Linux
+2023 build, and the release binary run against the real production
+environment shape, both this session) versus what remains unverified (an
+actual EC2 instance) is in
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)'s deployment entry — not
+restated here.
 
 ## License
 

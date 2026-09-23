@@ -1,39 +1,122 @@
 # NEXO en AWS
 
-Esta guía prepara una instancia EC2 para una instalación personal de NEXO.
-La instancia ejecuta el API como servicio del host porque el extractor
+Prepara una instancia EC2 para una instalación personal de NEXO. La
+instancia ejecuta el API como servicio del host porque el extractor
 sandbox necesita invocar Docker con límites explícitos. PostgreSQL y los
 objetos se mantienen en almacenamiento persistente bajo control de la
 instancia.
 
-## Variables requeridas
+Esta guía y `provision.sh` cubren todo lo que no toca la cuenta de AWS en
+sí (paquetes, base de datos, binario, servicio). Crear la instancia EC2, el
+security group y la IP elástica es un paso aparte, deliberadamente fuera de
+este script — son recursos facturados de la cuenta y esa decisión le
+corresponde a quien los paga, no a un script.
 
-Configurar `/etc/nexo/nexo-api.env` con permisos `0600`:
+## 0. Crear la instancia (fuera de este repo)
+
+Amazon Linux 2023, un `t3.small` alcanza para empezar (2 vCPU, 2 GiB —
+subir si el volumen de evidencia lo justifica), EBS persistente (20 GiB
+mínimo), y un security group que permita:
+
+- 22/tcp (SSH) solo desde tu IP.
+- 443/tcp (HTTPS) desde donde sea — es lo único público.
+- 80/tcp (HTTP) desde donde sea — solo para el desafío ACME de Let's Encrypt.
+
+## 1. Provisionar el host
+
+Con la instancia corriendo y acceso SSH:
+
+```sh
+git clone https://github.com/annatchijova/nexo.git
+cd nexo
+sudo ./deploy/aws/provision.sh
+```
+
+`provision.sh` es idempotente — instala Docker y PostgreSQL 16, crea el
+usuario de sistema `nexo`, el rol y la base `nexo` en Postgres, compila los
+tres extractores sandboxeados (`scripts/build_extractors.sh`) y el binario
+`nexo-api` en release, escribe `/etc/nexo/nexo-api.env` (solo si no existe
+— nunca pisa secretos ya generados), e instala y arranca
+`deploy/aws/nexo-api.service`.
+
+La primera corrida imprime el `NEXO_BOOTSTRAP_OWNER` recién generado — es
+el bearer token del único dueño de la instancia. Guardalo en un lugar
+seguro ahora; no se vuelve a imprimir, y sin él no hay forma de autenticar
+contra la API.
+
+## 2. Variables en `/etc/nexo/nexo-api.env` (permisos `0600`)
+
+`provision.sh` ya las escribe; esta es la referencia de qué hace cada una:
 
 ```text
 DATABASE_URL=postgres://nexo:<password>@127.0.0.1:5432/nexo
-NEXO_BOOTSTRAP_OWNER=<token-largo-generado-fuera-del-repositorio>
+NEXO_BOOTSTRAP_OWNER=<token largo, generado por provision.sh>
 NEXO_OBJECT_STORE_ROOT=/var/lib/nexo/objects
 NEXO_EXPORT_ROOT=/var/lib/nexo/exports
 NEXO_BIND_ADDR=127.0.0.1:8080
 NEXO_WEB_ORIGIN=https://nexo-web-sigma.vercel.app
+NEXO_AUDIT_HMAC_KEY=<clave larga, generada por provision.sh>
+NEXO_AUDIT_HMAC_KEY_VERSION=v1
 ```
 
-El token de `NEXO_BOOTSTRAP_OWNER` nunca debe aparecer en logs, comandos
-guardados, Git ni documentación pública.
+`NEXO_AUDIT_HMAC_KEY` y `NEXO_AUDIT_HMAC_KEY_VERSION` son obligatorias, no
+opcionales: `nexo_app::audit::append` (el camino que registra cada
+mutación — evidencia, aserciones, evaluaciones, preparaciones,
+credenciales) las requiere y falla sin ellas, así que **sin estas dos
+variables el API rechaza toda escritura**, no solo una función de auditoría
+específica. `NEXO_AUDIT_HMAC_KEY_VERSION` puede quedar como `v1`
+indefinidamente en una instancia de un solo operador; solo hace falta
+incrementarla si alguna vez rotás la clave.
 
-## Orden de instalación
+Ninguno de estos valores debe aparecer en logs, comandos guardados, Git ni
+documentación pública.
 
-1. Amazon Linux 2023, EBS persistente y acceso administrativo por SSH o SSM.
-2. Docker, PostgreSQL y las dependencias de compilación.
-3. Crear la base `nexo`, aplicar `crates/nexo-app/migrations/0001_init.sql` y
-   construir la imagen `nexo-extractor-plaintext:local` con
-   `scripts/build_extractors.sh`.
-4. Instalar el binario `nexo-api` en `/opt/nexo/nexo-api`.
-5. Instalar `deploy/aws/nexo-api.service`, habilitarlo y arrancarlo.
-6. Colocar Caddy o un balanceador TLS delante de `127.0.0.1:8080`.
-7. Configurar `VITE_NEXO_API_BASE` en Vercel con la URL HTTPS del API.
+## 3. TLS
 
-Antes de usar evidencia real, verificar `/healthz`, aplicar la migración en
-una base nueva y probar creación de caso, ingestión, evaluación, exportación
-y descarga desde la UI.
+`nexo-api` escucha solo en `127.0.0.1:8080` — nada expone eso a la red
+directamente. `deploy/aws/Caddyfile` pone Caddy delante como terminador TLS,
+con renovación automática de Let's Encrypt (sin paso manual de certbot):
+
+```sh
+sudo dnf install -y 'dnf-command(copr)'
+sudo dnf copr enable -y @caddy/caddy
+sudo dnf install -y caddy
+# editar deploy/aws/Caddyfile: reemplazar api.example.com por tu dominio real
+sudo install -m 0644 deploy/aws/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl enable --now caddy
+```
+
+Necesitás un dominio real con un registro A/AAAA apuntando a la IP de la
+instancia antes de este paso — Caddy no puede emitir un certificado válido
+para una IP desnuda.
+
+## 4. Conectar el frontend
+
+Configurar `VITE_NEXO_API_BASE` en Vercel con la URL HTTPS del paso
+anterior (`https://tu-dominio`).
+
+## 5. Verificar antes de usar evidencia real
+
+```sh
+curl -s https://tu-dominio/healthz
+```
+
+Después, desde la UI (o con `curl`, ver `docs/API_CONTRACT.md`): crear un
+caso, agregar evidencia de los tres tipos (`plain_text`, `eml`, `pdf`),
+evaluar, preparar (`draft_request` y `evidence_package`), exportar, y
+verificar el export con `nexo-verify` de forma independiente. Esta
+secuencia completa fue corrida y confirmada contra el binario release real
+con esta misma configuración de entorno — ver el "Status" del
+[readme técnico](../../docs/TECHNICAL_README.md) para el detalle exacto de
+qué se verificó y cuándo, y qué de esto sigue siendo hipótesis (una
+instancia AWS real, corriendo de forma persistente, todavía no se
+verificó contra la cuenta real).
+
+## Backups
+
+No automatizados todavía por `provision.sh`. Como mínimo: `pg_dump`
+periódico de la base `nexo` y una copia de `/var/lib/nexo/objects` y
+`/var/lib/nexo/exports` (contienen los bytes originales de la evidencia —
+perderlos sin aviso no es aceptable para lo que este proyecto se propone
+guardar). Snapshots de EBS son la opción más simple si el volumen completo
+está bajo `/var/lib/nexo`.

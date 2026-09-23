@@ -1,0 +1,30 @@
+# TLS-terminating reverse proxy in front of nexo-api. Caddy provisions and
+# renews the certificate automatically from Let's Encrypt the first time it
+# starts, given a real DNS A/AAAA record pointing at this instance — there
+# is no manual certbot step.
+#
+# Install:
+#   1. Replace api.example.com below with your real domain.
+#   2. sudo dnf install -y 'dnf-command(copr)' && sudo dnf copr enable -y @caddy/caddy && sudo dnf install -y caddy
+#   3. sudo install -m 0644 deploy/aws/Caddyfile /etc/caddy/Caddyfile   (after step 1's edit)
+#   4. sudo systemctl enable --now caddy
+#   5. Point VITE_NEXO_API_BASE (Vercel) at https://api.example.com
+#
+# nexo-api itself binds only 127.0.0.1:8080 (see nexo-api.service's
+# NEXO_BIND_ADDR) — Caddy is the only process with a public listener.
+
+api.example.com {
+	reverse_proxy 127.0.0.1:8080
+
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	log {
+		output file /var/log/caddy/nexo-api-access.log
+	}
+}

@@ -53,6 +53,11 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/bundles", get(handlers::list_bundles))
+        .route("/v1/credentials", post(handlers::issue_credential))
+        .route(
+            "/v1/credentials/current",
+            axum::routing::delete(handlers::revoke_current_credential),
+        )
         .route("/v1/cases", post(handlers::create_case))
         .route("/v1/cases/{case_id}", get(handlers::read_case))
         .route(

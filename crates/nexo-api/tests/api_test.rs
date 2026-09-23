@@ -1266,3 +1266,116 @@ async fn download_report_in_markdown_and_html_names_the_real_citation() {
     assert!(html.contains("Ley 25.326"));
     assert!(html.contains("<!doctype html>"));
 }
+
+#[tokio::test]
+async fn issued_credential_overlaps_and_revoking_current_only_disables_that_one() {
+    let Some(state) = test_state("credentials").await else {
+        return;
+    };
+    let original_token = new_owner_token(&state.pool, "credentials").await;
+    let app = router(state.clone());
+
+    // Issue a second credential for the same actor via the original token.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/credentials")
+                .header("Authorization", format!("Bearer {original_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let issued = body_json(response).await;
+    let new_token = issued["credential"].as_str().unwrap().to_string();
+    assert_ne!(new_token, original_token);
+    assert_eq!(new_token.len(), 64, "expected a 32-byte hex token");
+
+    // Both credentials authenticate the same actor: a case created with
+    // the new token is readable through the original one.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {new_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/v1/cases/{case_id}"))
+                .header("Authorization", format!("Bearer {original_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "both credentials must authenticate the same actor"
+    );
+
+    // Revoke the *original* token (the one used to authenticate this
+    // specific revoke request) -- the new token must remain valid.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v1/credentials/current")
+                .header("Authorization", format!("Bearer {original_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {original_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "the revoked credential must stop authenticating"
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {new_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "revoking one credential must not affect a different one for the same actor"
+    );
+}

@@ -27,11 +27,30 @@ scheme (hashed API keys, OAuth, session cookies) later only touches
 `src/auth.rs` — every handler downstream only ever sees an already
 authenticated `ActorRowId`.
 
-Credential rows support overlapping live credentials and explicit revocation,
-but credential issuance and revocation are not yet exposed as an account
-management API. Before Step 9, provide an operational rotation procedure and
-use high-entropy credentials; this is not a password-hashing scheme for
-low-entropy secrets.
+Credential rows support overlapping live credentials and explicit
+revocation, now exposed as a minimal self-service surface:
+
+- `POST /v1/credentials` — issues a new, high-entropy (32 random bytes,
+  hex-encoded) credential for the *same actor already authenticated on
+  this request*, never an actor named in the body (that would make this
+  an account-creation endpoint, not a rotation one). Returns
+  `{"credential": "<token>"}` exactly once — only its digest is stored,
+  so this is the only chance to see the plaintext. The actor's existing
+  credential(s) stay valid: issuing is additive, matching "a new device
+  starts using a new token while old devices keep working" rather than a
+  swap.
+- `DELETE /v1/credentials/current` — revokes the exact credential
+  presented on *this* request, never one named in a body or path (which
+  would let one valid token revoke a different credential belonging to
+  someone else). Proof of possession of the token is the only
+  authorization this needs, mirroring "log this device out." `204` on
+  success, `404` if it was already revoked.
+
+There is still no endpoint to list an actor's own credentials (by id or
+label) or to revoke one other than the one currently in use — only "issue
+a new one" and "revoke the one I'm using right now" exist. Revoking a
+*different* device's credential still requires direct database access.
+This is not a password-hashing scheme for low-entropy secrets.
 
 Every case-scoped endpoint calls `auth::authorize_case`, which loads the
 case's owner and compares it to the authenticated actor — a mismatch and a
@@ -93,6 +112,8 @@ without one's activation invalidating another's.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/v1/bundles` | List the seeded policy bundles (key + display name). Unauthenticated. |
+| `POST` | `/v1/credentials` | Issue a new bearer credential for the authenticated actor. Returned once. |
+| `DELETE` | `/v1/credentials/current` | Revoke the credential presented on this request. |
 | `POST` | `/v1/cases` | Create a case owned by the authenticated actor. |
 | `GET` | `/v1/cases/{case_id}` | Read the authorized case graph node summary, including node creation timestamps. |
 | `POST` | `/v1/cases/{case_id}/evidence` | Ingest plain-text evidence: object store -> sandboxed extraction -> artifact + observation nodes, or a bounded rejection reason. |

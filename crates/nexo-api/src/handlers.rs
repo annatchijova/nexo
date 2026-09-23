@@ -768,3 +768,55 @@ pub async fn download_report(
         .body(axum::body::Body::from(body))
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build report response"))
 }
+
+#[derive(Serialize)]
+pub struct IssueCredentialResponse {
+    /// Shown exactly once — only its SHA-256 digest is ever stored
+    /// (`repository::issue_actor_credential`), so this is the only
+    /// opportunity to see the plaintext value.
+    pub credential: String,
+}
+
+/// Issues a new bearer credential for the *same actor* already
+/// authenticated on this request — never for an actor named in the
+/// request body, which would make this an account-creation endpoint
+/// instead of a self-service rotation one. The caller's existing
+/// credential(s) remain valid: this is additive (a second device can
+/// start using a new token) rather than a swap, matching
+/// docs/API_CONTRACT.md's "credentials overlap during rotation" design.
+pub async fn issue_credential(
+    State(state): State<AppState>,
+    AuthenticatedActor(actor): AuthenticatedActor,
+) -> Result<Json<IssueCredentialResponse>, ApiError> {
+    use rand::RngExt;
+    let bytes: [u8; 32] = rand::rng().random();
+    let credential: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+
+    repository::issue_actor_credential(&state.pool, actor, &credential)
+        .await
+        .map_err(internal("could not issue credential"))?;
+
+    Ok(Json(IssueCredentialResponse { credential }))
+}
+
+/// Revokes the exact credential presented on *this* request — never a
+/// credential named in a request body or path, which would let one
+/// actor's valid token revoke a credential belonging to someone else.
+/// Proof of possession of the token is the only authorization this
+/// endpoint requires or accepts, mirroring "log this device out."
+pub async fn revoke_current_credential(
+    State(state): State<AppState>,
+    AuthenticatedActor(_actor): AuthenticatedActor,
+    crate::auth::CurrentCredential(token): crate::auth::CurrentCredential,
+) -> Result<StatusCode, ApiError> {
+    let revoked = repository::revoke_actor_credential(&state.pool, &token)
+        .await
+        .map_err(internal("could not revoke credential"))?;
+    if !revoked {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "credential not found or already revoked",
+        ));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}

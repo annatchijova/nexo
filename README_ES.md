@@ -63,6 +63,25 @@ y por qué. Todo lo que importa — artefactos, exportaciones, el bundle de
 política vigente — se puede hashear y verificar de forma independiente, así
 un resultado no tiene que tomarse por fe.
 
+### No tenés que confiar en la palabra de NEXO
+
+Cada pieza de evidencia que agregás, cada caso que exportás, y el bundle
+legal exacto usado para evaluarlo, recibe una **huella SHA-256** — una firma
+digital única de esos bytes exactos. Si cambia un solo byte, la huella
+cambia con él. Eso es lo que permite:
+
+- Probar que un documento que exportaste de NEXO no fue alterado desde que
+  lo tenés.
+- Que un abogado, una plataforma o un juzgado pueda verificar esa huella
+  por su cuenta, en vez de confiar en la palabra de NEXO.
+- Verificar todo esto con una herramienta chica e independiente, que no
+  necesita el servidor ni la base de datos de NEXO corriendo — así lo que
+  exportaste se puede seguir verificando aunque NEXO deje de existir.
+
+Es la misma idea que un precinto a prueba de manipulación: no es la promesa
+de que nada puede salir mal, sino la garantía de que si algo saliera mal,
+se notaría.
+
 ```text
 nexo/
 ├── crates/

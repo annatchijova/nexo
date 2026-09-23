@@ -61,6 +61,24 @@ whether an action is available, and why. Everything that matters —
 artifacts, exports, the policy bundle in force — can be hashed and checked
 independently, so a result doesn't have to be taken on faith.
 
+### You don't have to take NEXO's word for it
+
+Every piece of evidence you add, every case you export, and the exact legal
+bundle used to evaluate it gets a **SHA-256 fingerprint** — a unique digital
+signature of those exact bytes. Change a single byte, and the fingerprint
+changes with it. That's what makes it possible to:
+
+- Prove that a document you exported from NEXO hasn't been altered since you
+  got it.
+- Let a lawyer, a platform, or a court check that fingerprint themselves,
+  instead of taking NEXO's word for it.
+- Verify all of that with a small, standalone tool that doesn't need NEXO's
+  own server or database running — so what you exported stays checkable
+  even without NEXO.
+
+It's the same idea as a tamper-evident seal: not a promise that nothing can
+go wrong, but a guarantee that if something did, it would show.
+
 ```text
 nexo/
 ├── crates/

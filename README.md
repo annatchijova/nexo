@@ -1,95 +1,150 @@
 # NEXO
 
-**A verifiable digital-rights case graph.**
+**Turn what happened to you into something you can actually show someone.**
+**Convertí lo que te pasó en algo que de verdad podés mostrarle a alguien.**
 
-NEXO helps a person turn scattered digital incident material into an inspectable case: original artifacts, direct observations, user assertions, reproducible derived facts, bounded inferences, versioned legal claims, and action options. It is not a legal-answer generator. Every visible action must be able to answer: **why is this shown to me?**
+[Live demo / Demo en vivo](https://nexo-web-sigma.vercel.app) ·
+[Technical README](docs/TECHNICAL_README.md) ·
+[License / Licencia](LICENSE)
 
-```text
-ActionOption
-  ├─ factual support → provenance → artifact / user assertion
-  └─ legal support   → NormativeClaim → NormativeSource → captured bytes
-```
+Read this in [English](#english) or [Español](#español).
 
-An honest negative result is typed too: a stale policy requires its bundle and
-freshness evidence; an out-of-jurisdiction result requires scope evidence; an
-abstention carries its precise cause. NEXO never fakes an `ActionOption` merely
-to display that no action can be offered.
+---
 
-The first supported jurisdictions are Argentina and the United States. They will be independent policy bundles implementing a shared domain contract; NEXO does not flatten distinct legal systems into one generic rule set.
+## English
 
-NEXO distinguishes normative authority from acquisition: a statute from an
-official issuer remains primary even if acquired through a web fetch. It also
-distinguishes a rights route from the materials used to pursue it: NEXO may
-prepare a request, evidence package, or export, but it never silently performs
-the external legal act.
+### What NEXO is
 
-## Core principles
+If someone is going through digital harassment, a privacy violation, or
+another rights-affecting situation in their own life, the hard part is
+rarely "what happened" — it's turning scattered screenshots, chats, and
+memories into something a person, a platform, or an authority will actually
+take seriously.
 
-- **Evidence is not inference.** An extracted email date, a user declaration, and a system interpretation remain different kinds of claim.
-- **Explanations are deterministic projections.** NEXO has no model component. An explanation is deterministic citation rendering from an authorized graph projection: replaceable, regenerable, and unable to add support, change an action state, or invent a right.
-- **Unsupported actions fail closed.** A missing mandatory requirement cannot become `AVAILABLE`.
-- **Negative results are relational.** `ConflictingLegalClaims` and `Contraindicated` cannot be constructed through vector-only inputs; every supported path carries a typed witness produced by the policy engine.
-- **Integrity has a purpose.** Original artifacts, manifests, exports, policy bundles, and selected audit events are sealed when identity or historical alteration matters. Deterministic explanation text is not made authoritative by hashing it.
-- **A verifier is independent.** The future verification CLI must not import the application server or require its database.
+NEXO helps with that. You feed it what you have — messages, documents,
+your own account of events — and it keeps every piece honestly labeled:
+what you *have* (evidence), what you *said* (your own statement), and what
+NEXO *concludes* (a bounded inference). It never blurs those together, and
+it never invents a right you don't have. If the answer is "there isn't
+enough here yet," it says exactly that, instead of pretending.
 
-## Architecture
+When there *is* a supported path forward, NEXO shows you why, citing the
+actual law behind it — and can prepare the paperwork (a request, an
+evidence package, an export) for you to send. **NEXO prepares. It never
+files or sends anything on its own** — that line matters, and it's built
+into the software, not just promised in writing.
 
-The architecture diagram is available in [`docs/architecture/nexo-architecture.html`](docs/architecture/nexo-architecture.html); its editable source is [`docs/architecture/nexo-architecture.json`](docs/architecture/nexo-architecture.json). It is also published live at [annatchijova.github.io/nexo/docs/architecture/nexo-architecture.html](https://annatchijova.github.io/nexo/docs/architecture/nexo-architecture.html).
+### What it isn't
 
-```mermaid
-flowchart LR
-    person["Affected person<br/><small>Persona afectada</small>"] -->|"HTTPS"| web["NEXO Web"]
-    web -->|"API HTTPS"| api["NEXO API"]
-    api -->|"case & commands<br/><small>caso y comandos</small>"| domain["Domain core<br/><small>Núcleo de dominio</small><br/><i>pure and deterministic</i>"]
-    sources["Official sources<br/><small>Fuentes oficiales</small>"] -->|"cited bundle<br/><small>bundle citado</small>"| policy["Policy engine<br/><small>Motor de política</small>"]
-    domain -->|"evaluates support<br/><small>evalúa soporte</small>"| policy
-    domain -->|"persisted graph<br/><small>grafo persistido</small>"| postgres[("PostgreSQL")]
-    domain -->|"sealable objects<br/><small>objetos sellables</small>"| integrity["Integrity protocol<br/><small>Protocolo de integridad</small>"]
-    integrity -->|"artifacts & manifest<br/><small>artefactos y manifest</small>"| objects["Object store"]
-    objects -->|"verifiable export<br/><small>export verificable</small>"| verifier["Independent verifier<br/><small>Verificador independiente</small>"]
-```
+NEXO is not a lawyer, not legal advice, and not a chatbot that answers
+questions from a general sense of the law. It is scoped, one jurisdiction
+at a time, to real statutes it can cite — today, Argentina.
 
-The planned boundary is Rust for the domain, policy, integrity protocol, API, and independent verifier; TypeScript is deliberately limited to the web experience.
+### Where things stand right now
 
-1. Protocol foundation — typed identifiers, canonical serialization, explicit versions.
-2. Evidence graph — artifacts, observations, assertions, derived facts, and inferences.
-3. Policy engine — source-backed normative claims, jurisdictional evaluation, and versioned rule-match records.
-4. Application layer — commands, transactions, authorization, persistence, and exports.
-5. Interface — deterministic explanation of already-authorized support, never decision-making.
+Honestly, and without rounding up:
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md).
+- **Argentina is real and working**, covering two situations: accessing,
+  correcting, or deleting your personal data (Ley 25.326), and digital
+  violence (Ley 27.736) — both backed by the actual captured legal text,
+  not a paraphrase.
+- The backend handles the full path: adding evidence, getting an
+  evaluation, downloading a report, preparing and exporting materials.
+  This was verified by actually running the test suite, not just reading
+  the code — see the technical README for the specifics.
+- The web app works end-to-end for that path, but today it only accepts
+  pasted or uploaded plain text — attaching an email file, a PDF, or a
+  screenshot to OCR is not built yet.
+- A few things are prepared but not finished: a persistent personal
+  deployment, an accessibility pass on the interface, and the United
+  States bundle (planned once Argentina has been through a full
+  adversarial security review).
 
-## Development method
+None of that is hidden in fine print — the [technical README](docs/TECHNICAL_README.md)
+lists it plainly, with the evidence behind each claim.
 
-NEXO is built one closed layer at a time:
+### Try it
 
-```text
-contract → implementation → adversarial tests → red-team review → next layer
-```
+The demo is at [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app).
+Note that the UI is live, but it needs a running backend (API + database)
+behind it to actually create a case — see the technical README for what
+that takes.
 
-There is no “happy-path-only” milestone. Each layer must state its threat model, fail-closed behavior, hostile-input tests, and known limits before the next layer begins. The operating procedure is in [`docs/DEVELOPMENT_CYCLE.md`](docs/DEVELOPMENT_CYCLE.md).
+### For engineers
 
-## Status
+Architecture, contracts, current test status, and the honest list of
+what's implemented versus what's still a gap: [`docs/TECHNICAL_README.md`](docs/TECHNICAL_README.md).
 
-Stage 0 foundation is complete. The project is in Round 014 integration: the evidence graph, policy bundle boundaries, jurisdictional evaluator, and relational negative evidence are implemented and adversarially tested. Argentina and United States policy semantics remain bundle-specific; NEXO does not claim universal legal correctness or provide legal advice.
+---
 
-### Web demo
+## Español
 
-The current frontend is published at [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app).
+### Qué es NEXO
 
-- English is the default language; use the `ES`/`EN` buttons to switch the interface.
-- Dark mode is the default; the theme button enables light mode.
-- The interface stores the selected language, theme, API base, bearer token,
-  and case id in browser local storage.
-- Set `VITE_NEXO_API_BASE` in Vercel, or enter the API base in the UI, once
-  the backend is deployed.
+Si a alguien le está pasando una situación de violencia digital, una
+violación de privacidad, u otra situación que afecta sus derechos, lo
+difícil casi nunca es "qué pasó" — es convertir capturas de pantalla
+sueltas, chats y recuerdos en algo que una persona, una plataforma o una
+autoridad tome en serio.
 
-The Vercel project currently hosts the UI only. Case creation, evidence
-ingestion, evaluation, preparation, export, artifact downloads, and hash
-verification require the NEXO API, PostgreSQL, persistent object storage, and
-the Docker extractor sandbox. The AWS deployment preparation is documented in
-[`deploy/aws/README.md`](deploy/aws/README.md).
+NEXO ayuda con eso. Le das lo que tenés — mensajes, documentos, tu propio
+relato de los hechos — y NEXO mantiene cada pieza etiquetada con
+honestidad: lo que *tenés* (evidencia), lo que *dijiste* (tu declaración),
+y lo que NEXO *concluye* (una inferencia acotada). Nunca mezcla esas
+categorías, y nunca inventa un derecho que no tenés. Si la respuesta es
+"todavía no hay suficiente para esto", NEXO dice exactamente eso, en vez de
+simular una respuesta.
 
-## License
+Cuando sí hay un camino respaldado, NEXO te muestra por qué, citando la ley
+real detrás — y puede preparar los materiales (un pedido, un paquete de
+evidencia, una exportación) para que vos los envíes. **NEXO prepara. Nunca
+presenta ni envía nada por su cuenta** — esa línea importa, y está
+construida en el software, no solo prometida por escrito.
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+### Qué no es
+
+NEXO no es un abogado, no es asesoramiento legal, y no es un chatbot que
+contesta preguntas desde una noción general del derecho. Está acotado, una
+jurisdicción a la vez, a estatutos reales que puede citar — hoy, Argentina.
+
+### Dónde está parado ahora mismo
+
+Con honestidad, y sin redondear para arriba:
+
+- **Argentina está real y funcionando**, cubriendo dos situaciones: acceder,
+  corregir o eliminar tus datos personales (Ley 25.326), y violencia
+  digital (Ley 27.736) — ambas respaldadas por el texto legal realmente
+  capturado, no una paráfrasis.
+- El backend cubre el camino completo: agregar evidencia, obtener una
+  evaluación, descargar un informe, preparar y exportar materiales. Esto
+  se verificó corriendo de verdad la suite de tests, no solo leyendo el
+  código — el readme técnico tiene el detalle.
+- La web funciona de punta a punta para ese camino, pero hoy solo acepta
+  texto pegado o subido — adjuntar un email, un PDF, o una captura para
+  OCR todavía no está construido.
+- Hay cosas preparadas pero no terminadas: un deployment personal
+  persistente, una revisión de accesibilidad de la interfaz, y el bundle
+  de Estados Unidos (planeado una vez que Argentina pase por una revisión
+  de seguridad adversarial completa).
+
+Nada de esto está escondido en letra chica — el [readme técnico](docs/TECHNICAL_README.md)
+lo lista con claridad, con la evidencia detrás de cada afirmación.
+
+### Probalo
+
+La demo está en [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app).
+Ojo: la interfaz está viva, pero necesita un backend corriendo (API + base
+de datos) detrás para poder crear un caso de verdad — el readme técnico
+explica qué hace falta para eso.
+
+### Para ingenieros
+
+Arquitectura, contratos, estado real de los tests, y la lista honesta de
+qué está implementado versus qué falta todavía:
+[`docs/TECHNICAL_README.md`](docs/TECHNICAL_README.md).
+
+---
+
+## License / Licencia
+
+Apache License 2.0. See / Ver [`LICENSE`](LICENSE).

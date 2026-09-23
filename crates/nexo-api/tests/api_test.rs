@@ -507,7 +507,16 @@ async fn full_flow_evidence_to_actionable_citation() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(!response.into_body().collect().await.unwrap().to_bytes().is_empty());
+    let artifact_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(!artifact_bytes.is_empty());
+    // The prepared draft_request material is a real, human-readable
+    // Markdown report (nexo_report::render_markdown), not a raw JSON dump
+    // of the rendered evaluation -- a person must be able to open this
+    // file and read a request, not decode a data structure.
+    let artifact_text = String::from_utf8(artifact_bytes.to_vec()).unwrap();
+    assert!(artifact_text.starts_with("# NEXO Case Report"));
+    assert!(artifact_text.contains("Ley 25.326"));
+    assert!(!artifact_text.trim_start().starts_with('{'));
 
     let response = app
         .clone()

@@ -259,8 +259,23 @@ pub async fn prepare_case(
         _ => return Err((StatusCode::CONFLICT, "evaluation is not currently preparable")),
     };
     let rendered = explain::render(&evaluation, &resolver, &entry.handle.citations);
-    let bytes = serde_json::to_vec(&rendered)
-        .map_err(internal("could not render preparation material"))?;
+    // The prepared material is the same human-readable report a person
+    // downloads from GET .../evaluations/{id}/report — a raw JSON dump was
+    // never a "draft request" a person could actually read, print, or
+    // hand to someone. Markdown, not HTML/PDF, because the prepared
+    // artifact is meant to be the plain-text substance of the request,
+    // not a styled presentation of it.
+    let result_sha256 = result_digest(&rendered);
+    let report_input = nexo_report::ReportInput {
+        case_id,
+        evaluation_id: request.evaluation_id,
+        bundle_key: entry.handle.key,
+        bundle_display_name: entry.handle.display_name,
+        generated_at: Utc::now(),
+        result: &rendered,
+        result_sha256: &result_sha256,
+    };
+    let bytes = nexo_report::render_markdown(&report_input).into_bytes();
     let preparation_id = crate::preparation::persist_prepared_material_with_provenance(
         &state.pool,
         &state.store,

@@ -109,8 +109,12 @@ without one's activation invalidating another's.
 Body: `{"evaluation_id": i64, "kind": "draft_request"}`. The API accepts
 no recipient, endpoint, credential, or caller-supplied output bytes. It
 rebuilds the current projection, requires the selected receipt to remain
-supported and bound to the same action and input manifest, then stores a
-deterministic JSON draft with provenance. The response is
+supported and bound to the same action and input manifest, then stores the
+prepared material with provenance. The prepared material is a real
+human-readable document — `nexo_report::render_markdown` over the same
+rendered result `GET .../evaluations` returns, not a raw JSON dump: a
+"draft request" a person cannot open and read was never actually a draft
+of anything. The response is
 `{"preparation_id": i64, "kind": "draft_request", "status": "prepared"}`.
 Repeating the same request while that preparation remains current is
 idempotent and returns the existing preparation id.
@@ -303,3 +307,7 @@ of byte-identical content, all resolving to the same row, none failing).
 
 - A generic multi-bundle import/selection surface.
 - The web UI (Step 6).
+- `evidence_package` and `export` as directly requestable `preparations`
+  kinds — `nexo_core::PreparationKind` defines all three
+  (`docs/PREPARATION_CONTRACT.md`), but this endpoint only accepts
+  `draft_request` today; requesting `evidence_package` returns `422`.

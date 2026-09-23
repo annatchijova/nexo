@@ -7,6 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+echo "== musl target (idempotent; required by every cargo build below) =="
+rustup target add x86_64-unknown-linux-musl
+
 echo "== nexo-extractor-plaintext =="
 cargo build --release --target x86_64-unknown-linux-musl -p nexo-extractor-plaintext
 docker build -t nexo-extractor-plaintext:local -f crates/nexo-extractor-plaintext/Dockerfile .

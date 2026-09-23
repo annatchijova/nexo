@@ -9,7 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use nexo_integrity::{hash_bytes, Manifest, ManifestEntry, Sha256Digest};
+use nexo_integrity::{Manifest, ManifestEntry, Sha256Digest, hash_bytes};
 use serde_json::json;
 
 /// Aggregate export budget. Individual objects are bounded by the object

@@ -65,8 +65,20 @@ pub struct AuditExport {
     pub auth_scheme: String,
     pub hmac_key_version: String,
     pub genesis_digest: String,
+    pub chain_state: AuditChainState,
     pub events: Vec<AuditExportEvent>,
     pub checkpoint: AuditCheckpoint,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuditChainState {
+    pub chain_version: u64,
+    pub auth_scheme: String,
+    pub hmac_key_version: String,
+    pub tip_hmac_key_version: String,
+    pub current_sequence: u64,
+    pub current_tip: String,
+    pub current_tip_hmac: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -322,11 +334,12 @@ pub async fn rotate_key_version(pool: &crate::repository::Pool) -> Result<(), Au
     Ok(())
 }
 
-/// Materializes a stable authenticated audit-export-v2 document. The caller may write this
+/// Materializes a stable authenticated audit-export-v3 document. The caller may write this
 /// JSON to a separately retained destination and verify it with nexo-verify.
 pub async fn export(pool: &crate::repository::Pool) -> Result<AuditExport, AuditError> {
     let chain = sqlx::query(
-        "SELECT chain_version, auth_scheme, hmac_key_version, genesis_digest
+        "SELECT chain_version, auth_scheme, hmac_key_version, genesis_digest,
+                current_sequence, current_tip, current_tip_hmac
              FROM audit_chains WHERE chain_id = $1",
     )
     .bind(AUDIT_CHAIN_ID)
@@ -341,6 +354,8 @@ pub async fn export(pool: &crate::repository::Pool) -> Result<AuditExport, Audit
     }
     let genesis: Vec<u8> = chain.try_get("genesis_digest")?;
     let genesis = digest_from_bytes(&genesis)?.to_string();
+    let current_tip: Vec<u8> = chain.try_get("current_tip")?;
+    let current_tip_hmac: Vec<u8> = chain.try_get("current_tip_hmac")?;
 
     let rows = sqlx::query(
         "SELECT sequence, event_id, occurred_at, actor_id, case_id, event_kind,
@@ -390,13 +405,24 @@ pub async fn export(pool: &crate::repository::Pool) -> Result<AuditExport, Audit
     .ok_or(AuditError::InvalidDigest)?;
     let tip: Vec<u8> = checkpoint.try_get("tip_digest")?;
     let tip_hmac: Vec<u8> = checkpoint.try_get("tip_hmac")?;
+    let checkpoint_hmac_key_version: String = checkpoint.try_get("hmac_key_version")?;
     Ok(AuditExport {
-        schema_version: 2,
+        schema_version: 3,
         chain_id: AUDIT_CHAIN_ID.into(),
         chain_version: u64::try_from(chain_version).map_err(|_| AuditError::InvalidDigest)?,
         auth_scheme,
         hmac_key_version,
         genesis_digest: genesis,
+        chain_state: AuditChainState {
+            chain_version: u64::try_from(chain_version).map_err(|_| AuditError::InvalidDigest)?,
+            auth_scheme: chain.try_get("auth_scheme")?,
+            hmac_key_version: chain.try_get("hmac_key_version")?,
+            tip_hmac_key_version: checkpoint_hmac_key_version,
+            current_sequence: u64::try_from(chain.try_get::<i64, _>("current_sequence")?)
+                .map_err(|_| AuditError::InvalidDigest)?,
+            current_tip: digest_from_bytes(&current_tip)?.to_string(),
+            current_tip_hmac: digest_from_bytes(&current_tip_hmac)?.to_string(),
+        },
         events,
         checkpoint: AuditCheckpoint {
             chain_version: u64::try_from(checkpoint.try_get::<i64, _>("chain_version")?)

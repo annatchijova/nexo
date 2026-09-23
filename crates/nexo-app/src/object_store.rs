@@ -17,7 +17,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use nexo_integrity::{hash_bytes, Sha256Digest};
+use nexo_integrity::{Sha256Digest, hash_bytes};
 
 /// Default per-object ceiling: `put`/`get` neither write nor read past
 /// this many bytes for one object. Without a bound here, this store would
@@ -314,7 +314,11 @@ mod tests {
                 "round {round}: digest disagreement"
             );
             let read = store.get(first);
-            assert!(read.is_ok(), "round {round}: get() failed: {:?}", read.err());
+            assert!(
+                read.is_ok(),
+                "round {round}: get() failed: {:?}",
+                read.err()
+            );
             assert_eq!(
                 read.unwrap(),
                 *content,

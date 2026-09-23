@@ -28,6 +28,7 @@ fn main() {
                 if report.complete_history
                     && report.integrity_ok
                     && report.linkage_ok
+                    && report.chain_state_ok
                     && report.hmac_checked
                     && report.hmac_ok =>
             {

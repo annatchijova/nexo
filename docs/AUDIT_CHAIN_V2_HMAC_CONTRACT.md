@@ -1,4 +1,4 @@
-# Authenticated audit chain v2 contract
+# Authenticated audit chain v2 and export v3 contract
 
 `audit_chain/v2` is an explicit cutover from v1. The v3 migration refuses to
 reinterpret a non-empty v1 chain. An operator must perform a reviewed
@@ -42,6 +42,17 @@ required until the retained history no longer needs verification.
 
 No key, raw or derived, is allowed in events, exports, logs, SQL, or source
 control. The verifier reports `hmac_checked` and `hmac_ok` separately.
+
+## Export version and completeness witness
+
+The authenticated chain remains `audit_chain/v2`; its materialized export is
+`audit-export-v3`. Export-v3 adds an authenticated `chain_state` containing the
+database chain's current sequence, tip digest, and tip HMAC. The independent
+verifier requires that state to match the complete event list and checkpoint.
+This detects removal of a database tail together with its latest checkpoint
+when the chain row itself is retained. The older audit-export-v2 format remains
+parseable for compatibility but is not reported as `complete_history`, because
+it has no authenticated chain-state witness.
 
 ## Threat-model boundary
 

@@ -39,15 +39,18 @@ Exit code `0` means every check passed. Exit code `1` means the export was
 rejected; exit code `2` means the command line was invalid.
 
 For the selected mutating-event history, the independent verifier accepts an
-authenticated `audit-export-v2` document:
+authenticated `audit-export-v3` document:
 
 ```text
 cargo run -p nexo-verifier -- audit path/to/audit-export.json
 ```
 
 Audit verification checks the explicit genesis, canonical full-event digest,
-previous-digest linkage, sequence continuity, checkpoint, and HMAC as separate
-properties. v2 requires the configured keyring and does not silently fall back
-to SHA-only verification. It does not claim truth of event content, independent
-time witnessing, or resistance to an operator who controls the complete
-application deployment and HMAC secret.
+previous-digest linkage, sequence continuity, checkpoint, authenticated chain
+state, and HMAC as separate properties. The chain is v2 and the export format
+is v3. Legacy v2 exports remain parseable but cannot receive the
+`complete_history` result because they lack the chain-state witness. The
+configured keyring is required and verification never silently falls back to
+SHA-only mode. Verification does not claim truth of event content,
+independent time witnessing, or resistance to an operator who controls the
+complete application deployment and HMAC secret.

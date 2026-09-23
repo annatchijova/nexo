@@ -74,22 +74,28 @@ async fn credentials_rotate_with_overlap_then_revoke() {
         Some(actor)
     );
 
-    assert!(repository::revoke_actor_credential(&pool, &old)
-        .await
-        .unwrap());
-    assert!(repository::find_actor_by_identity(&pool, &old)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        repository::revoke_actor_credential(&pool, &old)
+            .await
+            .unwrap()
+    );
+    assert!(
+        repository::find_actor_by_identity(&pool, &old)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         repository::find_actor_by_identity(&pool, &replacement)
             .await
             .unwrap(),
         Some(actor)
     );
-    assert!(!repository::revoke_actor_credential(&pool, &old)
-        .await
-        .unwrap());
+    assert!(
+        !repository::revoke_actor_credential(&pool, &old)
+            .await
+            .unwrap()
+    );
 }
 
 async fn unique_actor(pool: &PgPool, label: &str) -> ActorRowId {

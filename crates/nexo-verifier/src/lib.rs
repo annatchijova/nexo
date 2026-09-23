@@ -77,8 +77,21 @@ struct AuditExport {
     auth_scheme: String,
     hmac_key_version: String,
     genesis_digest: String,
+    #[serde(default)]
+    chain_state: Option<AuditChainState>,
     events: Vec<AuditExportEvent>,
     checkpoint: AuditCheckpoint,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditChainState {
+    chain_version: u64,
+    auth_scheme: String,
+    hmac_key_version: String,
+    tip_hmac_key_version: String,
+    current_sequence: u64,
+    current_tip: String,
+    current_tip_hmac: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,16 +132,18 @@ pub struct AuditVerificationReport {
     pub sequence_ok: bool,
     pub genesis_ok: bool,
     pub checkpoint_ok: bool,
+    pub chain_state_ok: bool,
     pub complete_history: bool,
     pub tip_digest: Sha256Digest,
     pub hmac_checked: bool,
     pub hmac_ok: bool,
 }
 
-/// Verifies audit-export-v1 without importing NEXO's API, application, or
+/// Verifies authenticated audit exports without importing NEXO's API, application, or
 /// database code. The checkpoint must be retained with the export; it is the
-/// completeness witness for the presented history, not proof that the events
-/// themselves are true.
+/// completeness witness for the presented history. Export-v3 also carries the
+/// authenticated database chain state, which detects tail loss from the
+/// database projection when that state is retained in the export.
 pub fn verify_audit_export(path: impl AsRef<Path>) -> Result<AuditVerificationReport, VerifyError> {
     let keyring =
         AuditHmacKeyring::from_environment().map_err(VerifyError::AuditHmacKeyUnavailable)?;
@@ -141,7 +156,7 @@ pub fn verify_audit_export_with_keyring(
 ) -> Result<AuditVerificationReport, VerifyError> {
     let bytes = fs::read(path).map_err(VerifyError::AuditRead)?;
     let export: AuditExport = serde_json::from_slice(&bytes).map_err(VerifyError::AuditParse)?;
-    if export.schema_version != 2 {
+    if export.schema_version != 2 && export.schema_version != 3 {
         return Err(VerifyError::AuditSchema(export.schema_version));
     }
     if export.chain_id.is_empty() || export.chain_version != 2 {
@@ -275,7 +290,36 @@ pub fn verify_audit_export_with_keyring(
         && export.checkpoint.at_sequence == export.events.len() as u64
         && export.checkpoint.entry_count == export.events.len() as u64
         && checkpoint_tip == tip;
-    let complete_history = checkpoint_ok && sequence_ok && genesis_ok && hmac_ok;
+    let chain_state_ok = match (&export.chain_state, export.schema_version) {
+        (Some(state), 3) => {
+            let state_tip = parse_audit_digest("chain_state.current_tip", &state.current_tip)?;
+            let state_tip_hmac =
+                parse_audit_digest("chain_state.current_tip_hmac", &state.current_tip_hmac)?;
+            let state_key = keyring.key(&state.tip_hmac_key_version).ok_or_else(|| {
+                VerifyError::AuditHmacKeyUnavailable(state.tip_hmac_key_version.clone())
+            })?;
+            let expected_state_hmac = audit_checkpoint_hmac_v1(
+                state_key,
+                &state.tip_hmac_key_version,
+                &export.chain_id,
+                state.chain_version,
+                state.current_sequence,
+                state_tip,
+                state.current_sequence,
+            );
+            state.chain_version == export.chain_version
+                && state.auth_scheme == export.auth_scheme
+                && state.hmac_key_version == export.hmac_key_version
+                && state.tip_hmac_key_version == export.checkpoint.hmac_key_version
+                && state.current_sequence == export.events.len() as u64
+                && state_tip == tip
+                && state_tip_hmac == expected_state_hmac
+                && state_tip_hmac == checkpoint_tip_hmac(&export.checkpoint)?
+        }
+        (None, 2) => false,
+        _ => false,
+    };
+    let complete_history = checkpoint_ok && chain_state_ok && sequence_ok && genesis_ok && hmac_ok;
 
     Ok(AuditVerificationReport {
         chain_id: export.chain_id,
@@ -286,11 +330,16 @@ pub fn verify_audit_export_with_keyring(
         sequence_ok,
         genesis_ok,
         checkpoint_ok,
+        chain_state_ok,
         complete_history,
         tip_digest: tip,
         hmac_checked: true,
         hmac_ok,
     })
+}
+
+fn checkpoint_tip_hmac(checkpoint: &AuditCheckpoint) -> Result<Sha256Digest, VerifyError> {
+    parse_audit_digest("checkpoint.tip_hmac", &checkpoint.tip_hmac)
 }
 
 fn parse_audit_digest(field: &'static str, value: &str) -> Result<Sha256Digest, VerifyError> {
@@ -513,12 +562,29 @@ mod tests {
             previous = entry;
         }
         let export = serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 3,
             "chain_id": "mutations",
             "chain_version": 2,
             "auth_scheme": "hmac-sha256",
             "hmac_key_version": "v1",
             "genesis_digest": Sha256Digest::zero().to_string(),
+            "chain_state": {
+                "chain_version": 2,
+                "auth_scheme": "hmac-sha256",
+                "hmac_key_version": "v1",
+                "tip_hmac_key_version": "v1",
+                "current_sequence": events,
+                "current_tip": previous.to_string(),
+                "current_tip_hmac": audit_checkpoint_hmac_v1(
+                    key,
+                    "v1",
+                    "mutations",
+                    2,
+                    events as u64,
+                    previous,
+                    events as u64,
+                ).to_string(),
+            },
             "events": serialized,
             "checkpoint": {
                 "chain_version": 2,
@@ -635,6 +701,7 @@ mod tests {
         let path = root.join("audit.json");
         let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         export["hmac_key_version"] = serde_json::json!("v2");
+        export["chain_state"]["hmac_key_version"] = serde_json::json!("v2");
         fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
         let rotated = AuditHmacKeyring::from_parts(
             "v2",
@@ -708,10 +775,24 @@ mod tests {
             )
             .to_string()
         );
+        export["chain_state"]["current_tip"] = serde_json::json!(previous.to_string());
+        export["chain_state"]["current_tip_hmac"] = serde_json::json!(
+            audit_checkpoint_hmac_v1(
+                test_keyring().key("v1").unwrap(),
+                "v1",
+                "mutations",
+                2,
+                2,
+                previous,
+                2,
+            )
+            .to_string()
+        );
         fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
         let report = verify_audit_export_with_keyring(path, &test_keyring()).unwrap();
         assert!(report.integrity_ok);
         assert!(report.linkage_ok);
+        assert!(report.chain_state_ok);
         assert!(report.complete_history);
         fs::remove_dir_all(root).unwrap();
     }
@@ -726,6 +807,36 @@ mod tests {
         fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
         let report = verify_audit_export_with_keyring(path, &test_keyring()).unwrap();
         assert!(!report.checkpoint_ok);
+        assert!(!report.complete_history);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn audit_export_rejects_database_tail_loss_even_if_checkpoint_is_truncated() {
+        let root = temp_export();
+        write_audit_export(&root, 3);
+        let path = root.join("audit.json");
+        let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        export["events"].as_array_mut().unwrap().pop();
+        let previous = export["events"][1]["entry_digest"].clone();
+        export["checkpoint"]["at_sequence"] = serde_json::json!(2);
+        export["checkpoint"]["entry_count"] = serde_json::json!(2);
+        export["checkpoint"]["tip_digest"] = previous.clone();
+        export["checkpoint"]["tip_hmac"] = serde_json::json!(
+            audit_checkpoint_hmac_v1(
+                test_keyring().key("v1").unwrap(),
+                "v1",
+                "mutations",
+                2,
+                2,
+                Sha256Digest::from_hex(previous.as_str().unwrap()).unwrap(),
+                2,
+            )
+            .to_string()
+        );
+        fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
+        let report = verify_audit_export_with_keyring(path, &test_keyring()).unwrap();
+        assert!(!report.chain_state_ok);
         assert!(!report.complete_history);
         fs::remove_dir_all(root).unwrap();
     }

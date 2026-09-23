@@ -1,13 +1,24 @@
+<p align="center">
+  <img src="visual/logo.png" alt="NEXO" width="240" />
+</p>
+
 # NEXO
 
 **Turn what happened to you into something you can actually show someone.**
 **Convertí lo que te pasó en algo que de verdad podés mostrarle a alguien.**
 
 [Live demo / Demo en vivo](https://nexo-web-sigma.vercel.app) ·
-[Technical README](docs/TECHNICAL_README.md) ·
-[License / Licencia](LICENSE)
+[Technical README](docs/TECHNICAL_README.md)
 
 Read this in [English](#english) or [Español](#español).
+
+```mermaid
+flowchart LR
+    input["What you have<br/><small>Lo que tenés</small><br/><i>chats, screenshots, documents, your own account</i>"] --> nexo["NEXO<br/><small>keeps evidence, your words, and inferences separate<br/>evidencia, tu palabra e inferencias, siempre distintas</small>"]
+    nexo --> question{"Is there a supported path?<br/><small>¿Hay un camino respaldado?</small>"}
+    question -->|"yes / sí"| prep["NEXO prepares the materials<br/><small>vos decidís si los enviás</small>"]
+    question -->|"no"| honest["An honest explanation of why not<br/><small>una explicación honesta de por qué no</small>"]
+```
 
 ---
 

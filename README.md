@@ -92,7 +92,9 @@ nexo/
 │   ├── nexo-verifier/                    # standalone export verifier — no server, no database
 │   ├── nexo-sandbox/                     # isolated evidence-extraction worker
 │   ├── nexo-extraction/                  # extractor interface
-│   ├── nexo-extractor-plaintext/         # plain-text extractor (the only one shipped today)
+│   ├── nexo-extractor-plaintext/         # plain-text extractor
+│   ├── nexo-extractor-eml/               # email (.eml) extractor
+│   ├── nexo-extractor-pdf/               # PDF text extractor
 │   └── nexo-report/                      # Markdown/HTML/PDF report rendering
 ├── web/                                  # TypeScript web client
 ├── docs/                                 # contracts, architecture, red-team rounds, ADRs

@@ -105,14 +105,18 @@ pub async fn read_case(
 #[derive(Deserialize)]
 pub struct AddEvidenceRequest {
     pub filename: Option<String>,
+    /// Plain UTF-8 text for `kind: "plain_text"` (default) and `kind:
+    /// "eml"`; base64-encoded bytes for `kind: "pdf"`, since a PDF is
+    /// binary and a JSON string must be valid UTF-8.
     pub text: String,
     /// Which sandboxed extractor to route this evidence through:
-    /// `"plain_text"` (default, when omitted) or `"eml"`. This only
-    /// selects which extractor image runs — the extractor itself never
-    /// trusts this or `filename` for anything beyond routing, and rejects
-    /// hostile or malformed content as a bounded failure regardless of
-    /// what was claimed here (`docs/EXTRACTOR_EML_CONTRACT.md`,
-    /// `docs/EXTRACTOR_PLAINTEXT_CONTRACT.md`).
+    /// `"plain_text"` (default, when omitted), `"eml"`, or `"pdf"`. This
+    /// only selects which extractor image runs — the extractor itself
+    /// never trusts this or `filename` for anything beyond routing, and
+    /// rejects hostile or malformed content as a bounded failure
+    /// regardless of what was claimed here
+    /// (`docs/EXTRACTOR_PLAINTEXT_CONTRACT.md`,
+    /// `docs/EXTRACTOR_EML_CONTRACT.md`, `docs/EXTRACTOR_PDF_CONTRACT.md`).
     #[serde(default)]
     pub kind: Option<String>,
 }
@@ -154,10 +158,26 @@ pub async fn add_evidence(
         )
         .await
         .map_err(internal("could not ingest evidence"))?,
+        "pdf" => crate::evidence::ingest_pdf_evidence(
+            &state.pool,
+            &state.store,
+            case,
+            actor,
+            request.filename.as_deref(),
+            &request.text,
+        )
+        .await
+        .map_err(|error| match error {
+            crate::evidence::IngestError::InvalidBase64 => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "kind: \"pdf\" requires text to be base64-encoded PDF bytes",
+            ),
+            other => internal("could not ingest evidence")(other),
+        })?,
         _ => {
             return Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "only plain_text and eml evidence kinds are supported",
+                "only plain_text, eml, and pdf evidence kinds are supported",
             ))
         }
     };

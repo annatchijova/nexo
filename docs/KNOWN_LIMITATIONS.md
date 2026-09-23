@@ -13,29 +13,32 @@ convention as the Technical README: **RUNTIME-CONFIRMED** (an actual command
 was run this session), **CODE FACT** (verified by reading the live source),
 **PLAUSIBLE HYPOTHESIS** (not independently verified this session).
 
-## PDF and image/OCR evidence intake are not built
+## Image/OCR evidence intake is not built
 
-`nexo-extraction` ships two extractors: plain text
-(`crates/nexo-extractor-plaintext`) and email
+`nexo-extraction` ships three extractors: plain text
+(`crates/nexo-extractor-plaintext`), email
 (`crates/nexo-extractor-eml`, RFC 5322 plus a bounded MIME subset — CODE
-FACT, see [`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)). PDF and
-image/OCR extraction, both named in the original build plan, are not built.
-In practice this means a person can paste or upload plain text, or attach a
-raw `.eml` message, as evidence today, but not attach a PDF or a screenshot
-for OCR — they would need to transcribe that content into text or forward
-it as an email first.
+FACT, see [`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)), and PDF
+(`crates/nexo-extractor-pdf` — CODE FACT, see
+[`EXTRACTOR_PDF_CONTRACT.md`](EXTRACTOR_PDF_CONTRACT.md)). Image/OCR
+extraction, named in the original build plan, is not built. In practice this
+means a person can paste or upload plain text, attach a raw `.eml` message,
+or attach a PDF as evidence today, but not attach a screenshot for OCR —
+they would need to transcribe that content into text first.
 
-The `.eml` extractor's own non-goals are its own limitations, not restated
-here: only the first `text/plain` part of a message is read (attachments
-and nested multipart are not extracted), an HTML-only message with no
-`text/plain` alternative is a bounded failure, and only UTF-8/US-ASCII
-charsets are supported — full list in
-[`EXTRACTOR_EML_CONTRACT.md`](EXTRACTOR_EML_CONTRACT.md)'s "Non-goals".
+The `.eml` and PDF extractors' own non-goals are their own limitations, not
+restated here in full — see each contract's "Non-goals" section. Worth
+naming directly because they bound what "attach a PDF" actually covers
+today: the PDF extractor does not read scanned pages with no embedded text
+layer (it extracts text that is already text in the PDF, not pixels), does
+not decrypt password-protected PDFs, and does not resolve PDF 1.5+
+compressed object streams — a PDF built with those will surface as
+`no_pages_found` rather than being silently misread.
 
-Closing the PDF/OCR gap means adding one extractor crate per format inside
-the existing sandbox boundary (`docs/SANDBOX.md`), each with its own
-contract naming supported formats and rejection behavior, per the "First
-implementation gate" convention both existing extractors already follow.
+Closing the OCR gap means adding an extractor crate inside the existing
+sandbox boundary (`docs/SANDBOX.md`), with its own contract naming supported
+formats and rejection behavior, per the "First implementation gate"
+convention the three existing extractors already follow.
 
 ## The web UI is a single dense page, not the full case-timeline experience
 
@@ -67,6 +70,28 @@ that sequencing has not happened yet, so no US bundle work has begun.
 
 ## Resolved since the previous audit
 
+- **PDF evidence intake.** `crates/nexo-extractor-pdf` is a new sandboxed
+  extractor: linear object scan, `/FlateDecode` decompression (via
+  `flate2`'s pure-Rust `rust_backend` — the one extractor in this workspace
+  with a real dependency, and a real archive-bomb defense, since DEFLATE is
+  genuine decompression), content-stream tokenizing, and per-font
+  `/ToUnicode` CMap decoding with a WinAnsiEncoding fallback. `POST
+  /v1/cases/{case_id}/evidence` accepts `"kind": "pdf"` with `text` as
+  base64 (PDF is binary; a JSON string must be valid UTF-8). Tested against
+  hand-built fixtures *and* a real PDF produced by LibreOffice Writer,
+  which is what actually found and fixed two real bugs during development:
+  an indirect-reference `/Length` (`3 0 R`, not a direct integer) that a
+  hand-built-fixture-only test suite would never have exercised, and a
+  subsetted embedded font whose byte codes have no relationship to
+  WinAnsiEncoding at all, requiring `/ToUnicode` CMap support that wasn't
+  originally planned as in-scope. RUNTIME-CONFIRMED at every layer,
+  including the real-PDF case: 15 unit tests in the extractor binary, 3
+  adapter tests against the real built image (one against the real
+  LibreOffice fixture, asserting the exact expected Spanish text with
+  accents intact), and two full HTTP-through-Docker-through-database tests.
+  See [`EXTRACTOR_PDF_CONTRACT.md`](EXTRACTOR_PDF_CONTRACT.md) for the full
+  contract, including what it still does not handle (Type0/composite
+  fonts, object streams, encryption, scanned pages with no text layer).
 - **`.eml` evidence intake.** `crates/nexo-extractor-eml` is a new,
   hand-rolled, zero-dependency sandboxed extractor: RFC 5322 headers
   (Date/From/To/Subject, unfolded), plus the decoded first `text/plain`

@@ -10,8 +10,8 @@ use chrono::Utc;
 use nexo_app::object_store::FilesystemObjectStore;
 use nexo_app::repository::{self, ActorRowId, CaseRowId, Pool};
 use nexo_extraction::{
-    extract_eml, extract_plaintext, EmlExtraction, ExtractionAdapterError, ObservationCandidate,
-    PlaintextExtraction,
+    extract_eml, extract_pdf, extract_plaintext, EmlExtraction, ExtractionAdapterError,
+    ObservationCandidate, PdfExtraction, PlaintextExtraction,
 };
 use nexo_sandbox::SandboxLimits;
 
@@ -24,6 +24,11 @@ pub enum IngestError {
     /// cancelled — surfaced distinctly from a normal extraction failure,
     /// which is a typed bounded failure, not this.
     ExtractionTaskFailed,
+    /// `kind: "pdf"` requires `text` to be base64 (PDF bytes are binary,
+    /// and a JSON string must be valid UTF-8) — this is a malformed
+    /// request, not a rejected artifact, so nothing is durably recorded
+    /// for it, unlike a bounded extraction failure.
+    InvalidBase64,
 }
 
 impl From<repository::RepoError> for IngestError {
@@ -83,6 +88,15 @@ impl From<EmlExtraction> for Extraction {
     }
 }
 
+impl From<PdfExtraction> for Extraction {
+    fn from(value: PdfExtraction) -> Self {
+        match value {
+            PdfExtraction::Observations(items) => Extraction::Observations(items),
+            PdfExtraction::Failure(reason) => Extraction::Failure(reason),
+        }
+    }
+}
+
 /// Ingests one piece of plain-text evidence for `case`, owned by `actor`.
 /// Writes the bytes to the object store first (so they are durable even if
 /// extraction fails), then runs the sandboxed plaintext extractor, and
@@ -133,6 +147,40 @@ pub async fn ingest_eml_evidence(
         "nexo-extractor-eml",
         bytes,
         move || extract_eml(&owned_bytes, &SandboxLimits::conservative_default()).map(Extraction::from),
+    )
+    .await
+}
+
+/// Ingests one PDF document as evidence for `case`, owned by `actor`.
+/// `base64_text` is the PDF's bytes, base64-encoded — PDF is a binary
+/// format, and a JSON string field must be valid UTF-8, so it cannot carry
+/// raw PDF bytes the way `.eml` source (already text) can. Same durability
+/// and audit shape as [`ingest_plaintext_evidence`] and
+/// [`ingest_eml_evidence`] otherwise; see
+/// `docs/EXTRACTOR_PDF_CONTRACT.md`.
+pub async fn ingest_pdf_evidence(
+    pool: &Pool,
+    store: &FilesystemObjectStore,
+    case: CaseRowId,
+    actor: ActorRowId,
+    declared_filename: Option<&str>,
+    base64_text: &str,
+) -> Result<IngestOutcome, IngestError> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64_text.trim())
+        .map_err(|_| IngestError::InvalidBase64)?;
+    let owned_bytes = bytes.clone();
+    ingest_evidence(
+        pool,
+        store,
+        case,
+        actor,
+        declared_filename,
+        "application/pdf",
+        "nexo-extractor-pdf",
+        &bytes,
+        move || extract_pdf(&owned_bytes, &SandboxLimits::conservative_default()).map(Extraction::from),
     )
     .await
 }

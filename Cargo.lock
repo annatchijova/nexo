@@ -1328,6 +1328,7 @@ name = "nexo-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "chrono",
  "http-body-util",
  "nexo-app",
@@ -1385,6 +1386,13 @@ dependencies = [
 [[package]]
 name = "nexo-extractor-eml"
 version = "0.1.0"
+
+[[package]]
+name = "nexo-extractor-pdf"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+]
 
 [[package]]
 name = "nexo-extractor-plaintext"

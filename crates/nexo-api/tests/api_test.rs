@@ -43,6 +43,16 @@ fn eml_extractor_ready() -> bool {
         .unwrap_or(false)
 }
 
+fn pdf_extractor_ready() -> bool {
+    std::process::Command::new("docker")
+        .args(["image", "inspect", "nexo-extractor-pdf:local"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 async fn test_state(label: &str) -> Option<AppState> {
     let _ = tracing_subscriber::fmt::try_init();
     let url = match std::env::var("DATABASE_URL") {
@@ -1154,6 +1164,122 @@ async fn eml_evidence_with_unsupported_encoding_is_a_bounded_rejection() {
     let evidence = body_json(response).await;
     assert_eq!(evidence["observation_count"], 0);
     assert_eq!(evidence["rejection_reason"], "unsupported_transfer_encoding");
+}
+
+/// `kind: "pdf"` decodes `text` as base64 PDF bytes and routes them
+/// through the real sandboxed PDF extractor. Uses a real PDF produced by
+/// LibreOffice (`crates/nexo-api/testdata/real_libreoffice_export.pdf`,
+/// same fixture `nexo-extraction`'s own adapter test proves this against),
+/// not a hand-built one — the whole point is confirming the API's base64
+/// plumbing and routing work against a real document, not just that the
+/// extractor binary itself can parse one.
+#[tokio::test]
+async fn pdf_evidence_is_extracted_via_base64_and_reaches_the_real_extractor() {
+    if !docker_ready() || !pdf_extractor_ready() {
+        eprintln!("skipping: docker/nexo-extractor-pdf:local not available");
+        return;
+    }
+    let Some(state) = test_state("pdf-evidence").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "pdf-evidence").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let pdf_bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/testdata/real_libreoffice_export.pdf"
+    ))
+    .expect("fixture PDF must be readable");
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&pdf_bytes);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "evidencia.pdf", "text": encoded, "kind": "pdf"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        panic!("pdf evidence returned {status}: {}", String::from_utf8_lossy(&body));
+    }
+    let evidence = body_json(response).await;
+    assert!(evidence["observation_count"].as_u64().unwrap() > 0);
+    assert!(evidence["rejection_reason"].is_null());
+
+    let artifacts = repository::list_case_artifacts(&state.pool, repository::CaseRowId(case_id))
+        .await
+        .unwrap();
+    assert_eq!(artifacts.len(), 1);
+    assert!(artifacts[0].observation_locators.iter().any(|l| l.starts_with("page:1:text:")));
+}
+
+/// `kind: "pdf"` with `text` that is not valid base64 is a malformed
+/// request (422), never silently treated as empty or forwarded to the
+/// sandbox as garbage bytes.
+#[tokio::test]
+async fn pdf_evidence_with_invalid_base64_is_rejected_before_reaching_the_sandbox() {
+    let Some(state) = test_state("pdf-bad-base64").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "pdf-bad-base64").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "bad.pdf", "text": "not valid base64 !!", "kind": "pdf"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]

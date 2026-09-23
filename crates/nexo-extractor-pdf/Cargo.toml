@@ -1,0 +1,25 @@
+[package]
+name = "nexo-extractor-pdf"
+description = "Sandboxed PDF text extractor. Runs inside the SANDBOX.md worker boundary only; never linked into the API process."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "nexo-extractor-pdf"
+path = "src/main.rs"
+
+# Every other extractor in this workspace is zero-dependency, hand-rolling
+# its own parsing against hostile bytes. PDF is the one exception: its
+# stream compression (FlateDecode, near-universal in real PDFs) is DEFLATE,
+# and hand-rolling DEFLATE decompression is a much larger, much easier to
+# get subtly wrong undertaking than the parsing this crate hand-rolls
+# itself (object scanning, dictionaries, content-stream tokenizing, text
+# encoding). flate2 with only the pure-Rust `rust_backend` (miniz_oxide) is
+# used instead of the system/C zlib backend specifically so this binary
+# stays statically linked with no libc dependency, matching every other
+# extractor's `FROM scratch` image.
+[dependencies]
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

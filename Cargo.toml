@@ -6,6 +6,7 @@ members = [
     "crates/nexo-app",
     "crates/nexo-extractor-plaintext",
     "crates/nexo-extractor-eml",
+    "crates/nexo-extractor-pdf",
     "crates/nexo-sandbox",
     "crates/nexo-extraction",
     "crates/nexo-policy-ar",

@@ -95,7 +95,9 @@ nexo/
 │   ├── nexo-verifier/                    # verificador de exportaciones independiente — sin server, sin base de datos
 │   ├── nexo-sandbox/                     # worker aislado de extracción de evidencia
 │   ├── nexo-extraction/                  # interfaz de extractores
-│   ├── nexo-extractor-plaintext/         # extractor de texto plano (el único disponible hoy)
+│   ├── nexo-extractor-plaintext/         # extractor de texto plano
+│   ├── nexo-extractor-eml/               # extractor de email (.eml)
+│   ├── nexo-extractor-pdf/               # extractor de texto de PDF
 │   └── nexo-report/                      # generación de reportes en Markdown/HTML/PDF
 ├── web/                                  # cliente web en TypeScript
 ├── docs/                                 # contratos, arquitectura, rondas de red-team, ADRs

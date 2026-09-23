@@ -174,15 +174,19 @@ the API never accepts a caller-controlled path or filename.
 
 ### `POST /v1/cases/{case_id}/evidence`
 
-Body: `{"filename": string | null, "text": string, "kind": "plain_text" | "eml" | null}`.
+Body: `{"filename": string | null, "text": string, "kind": "plain_text" | "eml" | "pdf" | null}`.
 `kind` selects which sandboxed extractor runs — `"plain_text"` (the default
-when omitted) or `"eml"`, per `docs/EXTRACTOR_PLAINTEXT_CONTRACT.md` and
-`docs/EXTRACTOR_EML_CONTRACT.md`. `kind` and `filename` only route the
-request to an extractor image; neither is trusted by the extractor itself,
-which rejects hostile or malformed content as a bounded failure regardless
-of what was claimed. Runs the real `nexo-sandbox` + extractor pipeline
-(Docker, hardened per `docs/SANDBOX.md`) on a blocking-safe task so a slow
-or hostile artifact cannot stall the async runtime. Response:
+when omitted), `"eml"`, or `"pdf"`, per `docs/EXTRACTOR_PLAINTEXT_CONTRACT.md`,
+`docs/EXTRACTOR_EML_CONTRACT.md`, and `docs/EXTRACTOR_PDF_CONTRACT.md`. For
+`"pdf"`, `text` carries the PDF's bytes base64-encoded, since a JSON string
+must be valid UTF-8 and PDF is binary — malformed base64 is rejected with
+`422` before anything is durably recorded, never forwarded to the sandbox.
+`kind` and `filename` only route the request to an extractor image; neither
+is trusted by the extractor itself, which rejects hostile or malformed
+content as a bounded failure regardless of what was claimed. Runs the real
+`nexo-sandbox` + extractor pipeline (Docker, hardened per
+`docs/SANDBOX.md`) on a blocking-safe task so a slow or hostile artifact
+cannot stall the async runtime. Response:
 `{"artifact_node_id": i64, "observation_count": usize, "rejection_reason": string | null}`.
 The artifact is always durably recorded, even when extraction rejects it —
 evidence is never silently dropped because it failed extraction.

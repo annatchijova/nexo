@@ -130,6 +130,42 @@ pub fn extract_eml(
     })
 }
 
+pub const PDF_EXTRACTOR_IMAGE: &str = "nexo-extractor-pdf:local";
+
+/// One candidate extracted from a PDF: one text-showing operation
+/// (`Tj`/`TJ`/`'`/`"`) on a given page, located as `page:<n>:text:<m>` —
+/// see `docs/EXTRACTOR_PDF_CONTRACT.md`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PdfExtraction {
+    Observations(Vec<ObservationCandidate>),
+    /// A bounded, named rejection reason — see
+    /// `docs/EXTRACTOR_PDF_CONTRACT.md` for the full list (`no_pages_found`,
+    /// `stream_too_large`, `unsupported_font_encoding`, ...). Never a
+    /// partial or best-effort result.
+    Failure(String),
+}
+
+pub fn extract_pdf(
+    input_bytes: &[u8],
+    limits: &SandboxLimits,
+) -> Result<PdfExtraction, ExtractionAdapterError> {
+    let raw_bytes = run_extraction(PDF_EXTRACTOR_IMAGE, input_bytes, limits)?;
+    let raw: RawResult =
+        serde_json::from_slice(&raw_bytes).map_err(ExtractionAdapterError::MalformedResult)?;
+    Ok(match raw {
+        RawResult::Observations { items } => PdfExtraction::Observations(
+            items
+                .into_iter()
+                .map(|item| ObservationCandidate {
+                    locator: item.locator,
+                    text: item.text,
+                })
+                .collect(),
+        ),
+        RawResult::Failure { reason } => PdfExtraction::Failure(reason),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,5 +332,77 @@ mod tests {
         }
         let result = extract_eml(b"", &limits()).unwrap();
         assert_eq!(result, EmlExtraction::Observations(vec![]));
+    }
+
+    #[test]
+    fn pdf_message_produces_text_observations() {
+        if !image_available_named(PDF_EXTRACTOR_IMAGE) {
+            eprintln!(
+                "skipping: {PDF_EXTRACTOR_IMAGE} not built \
+                 (see crates/nexo-extractor-pdf/Dockerfile)"
+            );
+            return;
+        }
+        let message = b"BT /F1 12 Tf (Hola PDF) Tj ET";
+        let pdf = format!(
+            "%PDF-1.4\n\
+             3 0 obj\n<< /Type /Page /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n\
+             4 0 obj\n<< /Length {} >>\nstream\n{}\nendstream\nendobj\n\
+             5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+            message.len(),
+            String::from_utf8_lossy(message)
+        );
+        let result = extract_pdf(pdf.as_bytes(), &limits()).unwrap();
+        assert_eq!(
+            result,
+            PdfExtraction::Observations(vec![ObservationCandidate {
+                locator: "page:1:text:1".into(),
+                text: "Hola PDF".into(),
+            }])
+        );
+    }
+
+    #[test]
+    fn pdf_oversized_input_is_a_bounded_failure() {
+        if !image_available_named(PDF_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {PDF_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let oversized = vec![b'a'; 25 * 1024 * 1024 + 1];
+        let result = extract_pdf(&oversized, &limits()).unwrap();
+        assert_eq!(result, PdfExtraction::Failure("input_too_large".into()));
+    }
+
+    /// Not a hand-built fixture: a real PDF produced by LibreOffice Writer
+    /// from a plain-text document (`soffice --headless --convert-to pdf`),
+    /// containing accented Spanish text. Hand-built fixtures only prove the
+    /// parser accepts what it was written to accept — this proves it
+    /// handles a real PDF writer's actual output, including whatever
+    /// object layout, compression, and font setup LibreOffice happens to
+    /// produce, not just this crate's own assumptions about PDF shape.
+    #[test]
+    fn real_libreoffice_pdf_is_extracted_with_accented_text_intact() {
+        if !image_available_named(PDF_EXTRACTOR_IMAGE) {
+            eprintln!("skipping: {PDF_EXTRACTOR_IMAGE} not built");
+            return;
+        }
+        let pdf_bytes = std::fs::read(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/real_libreoffice_export.pdf"),
+        )
+        .expect("fixture PDF must be readable");
+        let result = extract_pdf(&pdf_bytes, &limits()).unwrap();
+        let PdfExtraction::Observations(items) = result else {
+            panic!("expected observations, got a failure: {result:?}");
+        };
+        assert!(!items.is_empty(), "a real PDF with real text must yield observations");
+        let all_text: String = items.iter().map(|item| item.text.as_str()).collect::<Vec<_>>().join(" ");
+        assert!(
+            all_text.contains("Solicito acceso"),
+            "expected the document's own text in the extraction, got: {all_text:?}"
+        );
+        assert!(
+            all_text.contains("café") || all_text.contains("corazón"),
+            "expected accented Spanish text to survive extraction intact, got: {all_text:?}"
+        );
     }
 }

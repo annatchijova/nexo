@@ -222,11 +222,18 @@ pub async fn prepare_case(
 ) -> Result<Json<PrepareResponse>, ApiError> {
     let case = CaseRowId(case_id);
     authorize_case(&state.pool, case, actor).await?;
-    if request.evaluation_id <= 0 || request.kind != "draft_request" {
-        return Err((
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "only draft_request preparation is supported",
-        ));
+    let kind: &'static str = match request.kind.as_str() {
+        "draft_request" => "draft_request",
+        "evidence_package" => "evidence_package",
+        _ => {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "only draft_request and evidence_package preparation are supported",
+            ))
+        }
+    };
+    if request.evaluation_id <= 0 {
+        return Err((StatusCode::UNPROCESSABLE_ENTITY, "evaluation_id is required"));
     }
 
     // The evaluation being prepared pins which bundle produced it — look
@@ -274,24 +281,36 @@ pub async fn prepare_case(
             ))
         }
     };
-    let rendered = explain::render(&evaluation, &resolver, &entry.handle.citations);
-    // The prepared material is the same human-readable report a person
-    // downloads from GET .../evaluations/{id}/report — a raw JSON dump was
-    // never a "draft request" a person could actually read, print, or
-    // hand to someone. Markdown, not HTML/PDF, because the prepared
-    // artifact is meant to be the plain-text substance of the request,
-    // not a styled presentation of it.
-    let result_sha256 = result_digest(&rendered);
-    let report_input = nexo_report::ReportInput {
-        case_id,
-        evaluation_id: request.evaluation_id,
-        bundle_key: entry.handle.key,
-        bundle_display_name: entry.handle.display_name,
-        generated_at: Utc::now(),
-        result: &rendered,
-        result_sha256: &result_sha256,
+    let bytes = match kind {
+        "draft_request" => {
+            let rendered = explain::render(&evaluation, &resolver, &entry.handle.citations);
+            // The prepared material is the same human-readable report a
+            // person downloads from GET .../evaluations/{id}/report — a raw
+            // JSON dump was never a "draft request" a person could actually
+            // read, print, or hand to someone. Markdown, not HTML/PDF,
+            // because the prepared artifact is meant to be the plain-text
+            // substance of the request, not a styled presentation of it.
+            let result_sha256 = result_digest(&rendered);
+            let report_input = nexo_report::ReportInput {
+                case_id,
+                evaluation_id: request.evaluation_id,
+                bundle_key: entry.handle.key,
+                bundle_display_name: entry.handle.display_name,
+                generated_at: Utc::now(),
+                result: &rendered,
+                result_sha256: &result_sha256,
+            };
+            nexo_report::render_markdown(&report_input).into_bytes()
+        }
+        "evidence_package" => {
+            let artifacts = repository::list_case_artifacts(&state.pool, case)
+                .await
+                .map_err(internal("could not list case artifacts"))?;
+            render_evidence_package_markdown(case_id, request.evaluation_id, Utc::now(), &artifacts)
+                .into_bytes()
+        }
+        _ => unreachable!("kind was validated above"),
     };
-    let bytes = nexo_report::render_markdown(&report_input).into_bytes();
     let preparation_id = crate::preparation::persist_prepared_material_with_provenance(
         &state.pool,
         &state.store,
@@ -299,7 +318,7 @@ pub async fn prepare_case(
         case,
         nexo_app::repository::ActionEvaluationRowId(request.evaluation_id),
         action,
-        "draft_request",
+        kind,
         concat!("nexo-api/", env!("CARGO_PKG_VERSION")),
         &bytes,
     )
@@ -320,9 +339,67 @@ pub async fn prepare_case(
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "preparation disappeared"))?;
     Ok(Json(PrepareResponse {
         preparation_id,
-        kind: "draft_request",
+        kind,
         status,
     }))
+}
+
+/// An evidence package is a self-verifying index, not the evidence itself:
+/// for each artifact in the case it names the real content digest NEXO
+/// computed at ingestion time, the ingestion-declared (unverified) filename
+/// and MIME type, and the locators of every observation actually extracted
+/// from it — so a reader can tell "NEXO hashed this" apart from "the
+/// uploader claimed this" without opening the object store.
+fn render_evidence_package_markdown(
+    case_id: i64,
+    evaluation_id: i64,
+    generated_at: chrono::DateTime<Utc>,
+    artifacts: &[repository::ArtifactSummary],
+) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "# Evidence package — case {case_id}");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Prepared for evaluation {evaluation_id} at {generated_at}.");
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "This is an index of the artifacts in this case, not the artifact \
+         bytes themselves. The digest column is NEXO's own SHA-256 hash of \
+         each artifact's content, computed when it was added; the filename \
+         and MIME columns are declared by whoever uploaded the artifact and \
+         are not independently verified."
+    );
+    let _ = writeln!(out);
+    if artifacts.is_empty() {
+        let _ = writeln!(out, "No artifacts are recorded on this case.");
+        return out;
+    }
+    let _ = writeln!(
+        out,
+        "| Artifact | SHA-256 digest | Declared filename | Declared MIME | Size (bytes) | Extractions |"
+    );
+    let _ = writeln!(out, "|---|---|---|---|---|---|");
+    for artifact in artifacts {
+        let filename = artifact.declared_filename.as_deref().unwrap_or("—");
+        let mime = artifact.declared_mime.as_deref().unwrap_or("—");
+        let extractions = if artifact.observation_locators.is_empty() {
+            "none recorded".to_string()
+        } else {
+            artifact.observation_locators.join(", ")
+        };
+        let _ = writeln!(
+            out,
+            "| {} | `{}` | {} | {} | {} | {} |",
+            artifact.node_id,
+            artifact.digest_hex,
+            filename,
+            mime,
+            artifact.size_bytes,
+            extractions
+        );
+    }
+    out
 }
 
 async fn verified_export_manifest(

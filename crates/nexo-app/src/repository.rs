@@ -1033,6 +1033,77 @@ pub async fn get_evaluation(
     }))
 }
 
+#[derive(Debug)]
+pub struct ArtifactSummary {
+    pub node_id: i64,
+    pub digest_hex: String,
+    pub size_bytes: i64,
+    pub declared_filename: Option<String>,
+    pub declared_mime: Option<String>,
+    /// Locators of every `Observation` extracted from this artifact —
+    /// empty when the artifact was rejected by the sandboxed extractor
+    /// (`ingestion_records.status = 'rejected'`) or has not been
+    /// extracted at all. Ordered by node id for a deterministic listing.
+    pub observation_locators: Vec<String>,
+}
+
+/// Every artifact in `case`, with its real content digest and declared
+/// (untrusted) ingestion metadata — the data an evidence package needs to
+/// be a self-verifying index, not just a list of node ids. Ordered by
+/// node id for a deterministic rendering.
+pub async fn list_case_artifacts(
+    pool: &Pool,
+    case: CaseRowId,
+) -> Result<Vec<ArtifactSummary>, RepoError> {
+    let artifact_rows = sqlx::query(
+        "SELECT a.node_id, d.hex AS digest_hex, a.size_bytes,
+                i.declared_filename, i.declared_mime
+         FROM artifact_nodes a
+         JOIN digests d ON d.id = a.digest_id
+         JOIN ingestion_records i ON i.id = a.ingestion_record_id
+         WHERE a.case_id = $1
+         ORDER BY a.node_id",
+    )
+    .bind(case.0)
+    .fetch_all(pool)
+    .await?;
+
+    let observation_rows = sqlx::query(
+        "SELECT artifact_node_id, locator
+         FROM observation_nodes
+         WHERE case_id = $1
+         ORDER BY artifact_node_id, node_id",
+    )
+    .bind(case.0)
+    .fetch_all(pool)
+    .await?;
+    let mut locators_by_artifact: std::collections::BTreeMap<i64, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for row in observation_rows {
+        let artifact_node_id: i64 = row.get("artifact_node_id");
+        let locator: String = row.get("locator");
+        locators_by_artifact
+            .entry(artifact_node_id)
+            .or_default()
+            .push(locator);
+    }
+
+    Ok(artifact_rows
+        .into_iter()
+        .map(|row| {
+            let node_id: i64 = row.get("node_id");
+            ArtifactSummary {
+                node_id,
+                digest_hex: row.get("digest_hex"),
+                size_bytes: row.get("size_bytes"),
+                declared_filename: row.get("declared_filename"),
+                declared_mime: row.get("declared_mime"),
+                observation_locators: locators_by_artifact.remove(&node_id).unwrap_or_default(),
+            }
+        })
+        .collect())
+}
+
 pub async fn evaluation_receipt_exists(
     pool: &Pool,
     evaluation: ActionEvaluationRowId,

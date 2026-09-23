@@ -607,6 +607,177 @@ async fn full_flow_evidence_to_actionable_citation() {
     ));
 }
 
+/// An `evidence_package` preparation is a second, real `PreparationKind`
+/// (`docs/PREPARATION_CONTRACT.md`), not a variant of `draft_request` — it
+/// must be requestable through the same endpoint, bound to the same
+/// receipt-verified evaluation, and its rendered content must name the
+/// artifact's real SHA-256 digest and its ingestion-declared filename, so a
+/// reader can tell what NEXO computed apart from what the uploader claimed.
+#[tokio::test]
+async fn evidence_package_preparation_lists_case_artifacts() {
+    let Some(state) = test_state("evidence-package").await else {
+        return;
+    };
+    let token = new_owner_token(&state.pool, "evidence-package").await;
+    let app = router(state.clone());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/cases")
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let case_id = body_json(response).await["case_id"].as_i64().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evidence"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"filename": "note.txt", "text": "Solicito acceso a mis datos.\n"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(body_json(response).await["observation_count"], 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/assertions"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"confirmed": true}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/evaluate"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let evaluation_id = body_json(response).await["evaluation_id"].as_i64().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/preparations"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"evaluation_id": evaluation_id, "kind": "evidence_package"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        panic!(
+            "evidence_package preparation returned {status}: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+    let preparation = body_json(response).await;
+    assert_eq!(preparation["kind"], "evidence_package");
+    assert_eq!(preparation["status"], "prepared");
+    let preparation_id = preparation["preparation_id"].as_i64().unwrap();
+
+    let owner = repository::find_actor_by_identity(&state.pool, &token)
+        .await
+        .unwrap()
+        .unwrap();
+    let export_dir = state
+        .export_root
+        .join(format!("case-{case_id}"))
+        .join(format!("preparation-{preparation_id}"));
+    nexo_api::preparation::export_preparation(
+        &state.pool,
+        &state.store,
+        owner,
+        repository::CaseRowId(case_id),
+        preparation_id,
+        &export_dir,
+    )
+    .await
+    .unwrap();
+    let manifest = body_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/cases/{case_id}/preparations/{preparation_id}/export/manifest"
+                    ))
+                    .header("Authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    let artifact_digest = manifest["artifacts"][0]["digest"].as_str().unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{preparation_id}/export/artifacts/{artifact_digest}"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(text.starts_with("# Evidence package"));
+    // The real, independently-verifiable artifact digest, not a copy of the
+    // report's own export digest.
+    let case_artifacts = repository::list_case_artifacts(&state.pool, repository::CaseRowId(case_id))
+        .await
+        .unwrap();
+    assert_eq!(case_artifacts.len(), 1);
+    assert!(text.contains(&case_artifacts[0].digest_hex));
+    assert!(text.contains("note.txt"));
+    assert!(text.contains("line:1"));
+}
+
 #[tokio::test]
 async fn evaluation_without_confirmed_identity_is_insufficient_facts() {
     let Some(state) = test_state("insufficient").await else {

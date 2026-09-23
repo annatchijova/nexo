@@ -57,12 +57,29 @@ wired policy bundle. The build plan sequences the United States bundle
 after Argentina's bundles complete a full adversarial (red-team) review —
 that sequencing has not happened yet, so no US bundle work has begun.
 
-## One uncommitted, unwired change on `main`
+## Resolved since the previous audit
 
-`ArtifactSummary` / `list_case_artifacts` in
-`crates/nexo-app/src/repository.rs` has no caller anywhere in the workspace
-(CODE FACT, verified by `grep -rn` across `crates/`). It compiles cleanly
-and does not affect `cargo test` or `cargo clippy`, but it is not part of
-any finished, wired feature. It is flagged here rather than silently
-committed as if it were complete, or silently discarded without the person
-who wrote it deciding what to do with it.
+- **`evidence_package` preparation.** `ArtifactSummary` / `list_case_artifacts`
+  in `crates/nexo-app/src/repository.rs` previously had no caller anywhere in
+  the workspace. It is now the read path `POST
+  /v1/cases/{case_id}/preparations` renders from when `kind` is
+  `evidence_package`: a self-verifying Markdown index naming each artifact's
+  real SHA-256 digest, its ingestion-declared (unverified) filename and MIME
+  type, and the locators of every observation actually extracted from it.
+  RUNTIME-CONFIRMED end-to-end, including through the sandboxed extractor and
+  the export/verify path:
+  `crates/nexo-app/tests/repository_test.rs::list_case_artifacts_reports_digests_and_observation_locators`
+  and
+  `crates/nexo-api/tests/api_test.rs::evidence_package_preparation_lists_case_artifacts`.
+- **A flaky audit-export test.** `nexo-verifier`'s
+  `audit_export_rejects_metadata_edit` intermittently failed under
+  `cargo test --workspace` (reproduced at 1/8 runs with `--test-threads=4`).
+  Root cause: its `temp_export()` test helper named the directory only by a
+  nanosecond timestamp and used `create_dir_all`, which does not error on an
+  existing path — two tests landing on the same timestamp under real thread
+  parallelism silently shared one `audit.json`, so one test's write could
+  clobber another's mid-assertion. Fixed by adding a per-process atomic
+  counter to the directory name and switching to `create_dir` (which does
+  error on collision, failing loudly instead of silently sharing state).
+  RUNTIME-CONFIRMED: 40/40 clean runs at `--test-threads=8` after the fix,
+  versus the reproduced failure before it.

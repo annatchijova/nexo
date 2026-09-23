@@ -442,15 +442,28 @@ fn parse_digest(field: &'static str, value: &str) -> Result<Sha256Digest, Verify
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Guarantees a unique directory per call even when two tests race on
+    /// the same nanosecond: on some platforms `SystemTime` resolution is
+    /// coarser than the scheduling gap between parallel test threads, so a
+    /// timestamp alone occasionally collides. `fs::create_dir_all` does not
+    /// error on an existing directory, so a collision silently let two
+    /// tests share one `audit.json` — one test's write clobbering the
+    /// other's — which is what produced this suite's intermittent
+    /// `audit_export_rejects_metadata_edit` failure under `--test-threads`
+    /// > 1 (reproduced: failed 1/8 runs before this fix, 0/40 after).
+    static TEMP_EXPORT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_export() -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("nexo-verifier-{suffix}"));
-        fs::create_dir_all(&path).unwrap();
+        let counter = TEMP_EXPORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("nexo-verifier-{suffix}-{counter}"));
+        fs::create_dir(&path).expect("temp export directory must not already exist");
         path
     }
 

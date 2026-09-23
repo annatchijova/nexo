@@ -647,6 +647,143 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     assert_eq!(nodes, vec![1, 2]);
 }
 
+/// `list_case_artifacts` is the read path an evidence-package preparation
+/// renders from: it must report each artifact's real content digest and its
+/// declared (untrusted) ingestion metadata, attach the locators of every
+/// observation actually extracted from it, leave an unextracted artifact's
+/// locators empty rather than erroring, and never surface a node that
+/// belongs to a different case.
+#[tokio::test]
+async fn list_case_artifacts_reports_digests_and_observation_locators() {
+    let Some(pool) = pool().await else { return };
+    let actor = unique_actor(&pool, "evidence-package").await;
+    let case = repository::create_case(&pool, actor).await.unwrap();
+    let other_case = repository::create_case(&pool, actor).await.unwrap();
+
+    let mut tx = pool.begin().await.unwrap();
+    let digest_a = repository::upsert_digest(&mut tx, "sha256", &"aa".repeat(32))
+        .await
+        .unwrap();
+    let provenance = repository::insert_provenance(
+        &mut tx,
+        case,
+        "user_provided",
+        Some(actor),
+        Utc::now(),
+        json!({"note": "test fixture"}),
+    )
+    .await
+    .unwrap();
+    let ingestion_a = repository::insert_ingestion_record(
+        &mut tx,
+        case,
+        Utc::now(),
+        Some("chat-export.txt"),
+        Some("text/plain"),
+        1024,
+        "accepted",
+    )
+    .await
+    .unwrap();
+    let artifact_with_observation =
+        repository::insert_artifact_node(&mut tx, case, digest_a, 1024, ingestion_a, provenance)
+            .await
+            .unwrap();
+    let tool_version = repository::ensure_tool_version(&mut tx, "nexo-extractor-plaintext", 1)
+        .await
+        .unwrap();
+    repository::insert_observation_node(
+        &mut tx,
+        case,
+        artifact_with_observation,
+        tool_version,
+        "line:1",
+        Utc::now(),
+    )
+    .await
+    .unwrap();
+
+    // A second artifact in the same case with no extraction yet — its
+    // locators must come back empty, not missing or erroring.
+    let digest_b = repository::upsert_digest(&mut tx, "sha256", &"bb".repeat(32))
+        .await
+        .unwrap();
+    let ingestion_b = repository::insert_ingestion_record(
+        &mut tx,
+        case,
+        Utc::now(),
+        None,
+        None,
+        512,
+        "accepted",
+    )
+    .await
+    .unwrap();
+    let artifact_without_observation =
+        repository::insert_artifact_node(&mut tx, case, digest_b, 512, ingestion_b, provenance)
+            .await
+            .unwrap();
+
+    // An artifact in a *different* case must never appear in this case's
+    // package, regardless of insertion order.
+    let other_provenance = repository::insert_provenance(
+        &mut tx,
+        other_case,
+        "user_provided",
+        Some(actor),
+        Utc::now(),
+        json!({"note": "other case fixture"}),
+    )
+    .await
+    .unwrap();
+    let digest_c = repository::upsert_digest(&mut tx, "sha256", &"cc".repeat(32))
+        .await
+        .unwrap();
+    let ingestion_c = repository::insert_ingestion_record(
+        &mut tx,
+        other_case,
+        Utc::now(),
+        Some("unrelated.txt"),
+        Some("text/plain"),
+        10,
+        "accepted",
+    )
+    .await
+    .unwrap();
+    repository::insert_artifact_node(
+        &mut tx,
+        other_case,
+        digest_c,
+        10,
+        ingestion_c,
+        other_provenance,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let artifacts = repository::list_case_artifacts(&pool, case).await.unwrap();
+    assert_eq!(artifacts.len(), 2, "only this case's artifacts, in order");
+
+    let first = &artifacts[0];
+    assert_eq!(first.node_id, artifact_with_observation.0);
+    assert_eq!(first.digest_hex, "aa".repeat(32));
+    assert_eq!(first.size_bytes, 1024);
+    assert_eq!(first.declared_filename.as_deref(), Some("chat-export.txt"));
+    assert_eq!(first.declared_mime.as_deref(), Some("text/plain"));
+    assert_eq!(first.observation_locators, vec!["line:1".to_string()]);
+
+    let second = &artifacts[1];
+    assert_eq!(second.node_id, artifact_without_observation.0);
+    assert_eq!(second.digest_hex, "bb".repeat(32));
+    assert_eq!(second.declared_filename, None);
+    assert_eq!(second.declared_mime, None);
+    assert!(
+        second.observation_locators.is_empty(),
+        "an unextracted artifact must report no locators, not error"
+    );
+}
+
 /// An `Observation` naming an artifact node id from a *different* case
 /// must be rejected by the schema's own foreign key, regardless of what
 /// the repository layer passes through — this proves the repository

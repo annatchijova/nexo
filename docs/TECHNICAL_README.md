@@ -127,7 +127,7 @@ health check:
 | POST | `/cases/{case_id}/evaluate` | request an evaluation |
 | GET | `/cases/{case_id}/evaluations` | list evaluations |
 | GET | `/cases/{case_id}/evaluations/{evaluation_id}/report` | download a report (MD/HTML/PDF) |
-| POST | `/cases/{case_id}/preparations` | request a preparation |
+| POST | `/cases/{case_id}/preparations` | request a preparation — `kind: "draft_request"` (a human-readable request document) or `kind: "evidence_package"` (a self-verifying index of the case's artifacts, digests, and extractions) |
 | GET | `/cases/{case_id}/preparations/{preparation_id}/export/manifest` | read an export manifest |
 | POST | `/cases/{case_id}/preparations/{preparation_id}/export` | export a preparation |
 | GET | `/cases/{case_id}/preparations/{preparation_id}/export/artifacts/{digest}` | read an exported artifact |
@@ -176,26 +176,31 @@ evaluation paths (CODE FACT: [`POLICY_BUNDLE_AR_DATA_ACCESS_CONTRACT.md`](POLICY
 `crates/nexo-policy-ar/src/lib.rs`, `crates/nexo-policy-ar-digital-violence/src/lib.rs`).
 The HTTP API covers the full case lifecycle: credential issuance and
 revocation, case creation, evidence intake, evaluation, Markdown/HTML/PDF
-reports, preparation, and export (CODE FACT: route table above, read from
-`crates/nexo-api/src/lib.rs`). The audit chain has gone through three
-iterations, the latest adding an authenticated chain-state witness
+reports, two preparation kinds (`draft_request`, `evidence_package`), and
+export (CODE FACT: route table above, read from `crates/nexo-api/src/lib.rs`).
+The audit chain has gone through three iterations, the latest adding an
+authenticated chain-state witness
 ([`AUDIT_CHAIN_V1_CONTRACT.md`](AUDIT_CHAIN_V1_CONTRACT.md),
 [`AUDIT_CHAIN_V2_HMAC_CONTRACT.md`](AUDIT_CHAIN_V2_HMAC_CONTRACT.md)).
 RUNTIME-CONFIRMED this session: `cargo test --workspace` passes with no
 failures; `cargo clippy --workspace --all-targets` is clean; the
 PostgreSQL-backed repository tests in
 `crates/nexo-app/tests/repository_test.rs` pass against a live local database
-via `scripts/test_schema.sh` and `scripts/test_repository.sh`. The
-adversarial-review record through this point is in [`red-team/`](red-team/)
-up to round 032.
+via `scripts/test_schema.sh` and `scripts/test_repository.sh`; the full
+evidence-to-preparation-to-export path, including the `evidence_package` kind,
+passes end-to-end against real Docker-sandboxed extraction via
+`scripts/test_api.sh`. The adversarial-review record through this point is in
+[`red-team/`](red-team/) up to round 032.
 
 **The exhaustive, dedicated account of what is not yet built — the
 extraction worker's format coverage, the web UI's scope, deployment status,
-the United States bundle, and one uncommitted unwired change — is in
-[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md).** It is not summarized here
-a second time; read it directly. Argentina and United States policy
-semantics remain bundle-specific; NEXO does not claim universal legal
-correctness or provide legal advice.
+and the United States bundle — is in
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)**, which also records what was
+resolved this session (the `evidence_package` preparation, and a flaky
+audit-export test fixed along the way). It is not summarized here a second
+time; read it directly. Argentina and United States policy semantics remain
+bundle-specific; NEXO does not claim universal legal correctness or provide
+legal advice.
 
 ### Web demo
 

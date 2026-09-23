@@ -75,25 +75,44 @@ documentación pública.
 
 `nexo-api` escucha solo en `127.0.0.1:8080` — nada expone eso a la red
 directamente. `deploy/aws/Caddyfile` pone Caddy delante como terminador TLS,
-con renovación automática de Let's Encrypt (sin paso manual de certbot):
+con renovación automática de Let's Encrypt (sin paso manual de certbot).
+
+El repositorio COPR `@caddy/caddy` **no publica build para Amazon Linux
+2023** (solo Fedora/EPEL/openSUSE) — confirmado al intentarlo en un deploy
+real, no asumido. Instalar el binario oficial directamente es el camino que
+sí funciona:
 
 ```sh
-sudo dnf install -y 'dnf-command(copr)'
-sudo dnf copr enable -y @caddy/caddy
-sudo dnf install -y caddy
+CADDY_VERSION=$(curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+curl -sL -o /tmp/caddy.tar.gz "https://github.com/caddyserver/caddy/releases/download/${CADDY_VERSION}/caddy_${CADDY_VERSION#v}_linux_amd64.tar.gz"
+tar xzf /tmp/caddy.tar.gz -C /tmp caddy
+sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
+
+sudo mkdir -p /etc/caddy /var/log/caddy /var/lib/caddy
+sudo id caddy >/dev/null 2>&1 || sudo useradd --system --home /var/lib/caddy --shell /sbin/nologin caddy
+sudo chown -R caddy:caddy /var/lib/caddy /var/log/caddy
+
 # editar deploy/aws/Caddyfile: reemplazar api.example.com por tu dominio real
+# (o, sin dominio propio, "<ip-con-guiones>.sslip.io" — ver nota abajo)
 sudo install -m 0644 deploy/aws/Caddyfile /etc/caddy/Caddyfile
+sudo install -m 0644 deploy/aws/caddy.service /etc/systemd/system/caddy.service
+sudo systemctl daemon-reload
 sudo systemctl enable --now caddy
 ```
 
-Necesitás un dominio real con un registro A/AAAA apuntando a la IP de la
-instancia antes de este paso — Caddy no puede emitir un certificado válido
-para una IP desnuda.
+Necesitás un nombre DNS real apuntando a la IP de la instancia antes de este
+paso — Caddy no puede emitir un certificado válido para una IP desnuda. Si
+no tenés un dominio propio todavía, [sslip.io](https://sslip.io) resuelve
+`<ip-con-guiones>.sslip.io` a esa IP automáticamente sin registro previo
+(por ejemplo, la IP `3.150.146.250` es `3-150-146-250.sslip.io`) — es DNS
+público real, así que Let's Encrypt lo valida igual que un dominio propio.
+Cuando consigas un dominio propio, es cambiar esa línea en el Caddyfile y
+recargar (`sudo systemctl reload caddy`).
 
 ## 4. Conectar el frontend
 
 Configurar `VITE_NEXO_API_BASE` en Vercel con la URL HTTPS del paso
-anterior (`https://tu-dominio`).
+anterior (`https://tu-dominio`, o `https://<ip-con-guiones>.sslip.io`).
 
 ## 5. Verificar antes de usar evidencia real
 
@@ -105,12 +124,14 @@ Después, desde la UI (o con `curl`, ver `docs/API_CONTRACT.md`): crear un
 caso, agregar evidencia de los tres tipos (`plain_text`, `eml`, `pdf`),
 evaluar, preparar (`draft_request` y `evidence_package`), exportar, y
 verificar el export con `nexo-verify` de forma independiente. Esta
-secuencia completa fue corrida y confirmada contra el binario release real
-con esta misma configuración de entorno — ver el "Status" del
+secuencia completa, incluyendo el tramo por HTTPS público a través de
+Caddy (no solo contra `127.0.0.1`), fue corrida contra una instancia EC2
+real (Amazon Linux 2023, `t3.small`) provisionada con este mismo
+`provision.sh` — ver el "Status" del
 [readme técnico](../../docs/TECHNICAL_README.md) para el detalle exacto de
-qué se verificó y cuándo, y qué de esto sigue siendo hipótesis (una
-instancia AWS real, corriendo de forma persistente, todavía no se
-verificó contra la cuenta real).
+qué se verificó, cuándo, y los tres bugs de deploy reales que esa corrida
+encontró y que `provision.sh` ya tiene arreglados (target musl faltante,
+swap insuficiente en `t3.small`, autenticación `ident` de Postgres).
 
 ## Backups
 

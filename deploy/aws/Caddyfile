@@ -3,12 +3,12 @@
 # starts, given a real DNS A/AAAA record pointing at this instance — there
 # is no manual certbot step.
 #
-# Install:
-#   1. Replace api.example.com below with your real domain.
-#   2. sudo dnf install -y 'dnf-command(copr)' && sudo dnf copr enable -y @caddy/caddy && sudo dnf install -y caddy
-#   3. sudo install -m 0644 deploy/aws/Caddyfile /etc/caddy/Caddyfile   (after step 1's edit)
-#   4. sudo systemctl enable --now caddy
-#   5. Point VITE_NEXO_API_BASE (Vercel) at https://api.example.com
+# Install: see "3. TLS" in deploy/aws/README.md — the @caddy/caddy COPR
+# repository used by some guides does not publish a build for Amazon Linux
+# 2023 (confirmed by trying it on a real deploy), so this installs the
+# official static binary directly instead. Replace api.example.com below
+# with your real domain, or an "<ip-con-guiones>.sslip.io" hostname if you
+# don't have one yet (see the README for why that still gets a real cert).
 #
 # nexo-api itself binds only 127.0.0.1:8080 (see nexo-api.service's
 # NEXO_BIND_ADDR) — Caddy is the only process with a public listener.

@@ -223,16 +223,17 @@ The current frontend is published at [nexo-web-sigma.vercel.app](https://nexo-we
 - Set `VITE_NEXO_API_BASE` in Vercel, or enter the API base in the UI, once
   the backend is deployed.
 
-The Vercel project currently hosts the UI only. Case creation, evidence
-ingestion, evaluation, preparation, export, artifact downloads, and hash
-verification require the NEXO API, PostgreSQL, persistent object storage, and
-the Docker extractor sandbox. The AWS deployment is documented and automated
-in [`../deploy/aws/README.md`](../deploy/aws/README.md) and
-[`../deploy/aws/provision.sh`](../deploy/aws/provision.sh) — the exact
-extent to which that path has actually been exercised (a real Amazon Linux
-2023 build, and the release binary run against the real production
-environment shape, both this session) versus what remains unverified (an
-actual EC2 instance) is in
+The Vercel project currently hosts the UI only, and has not yet been
+pointed at a backend (`VITE_NEXO_API_BASE` is unset). A real backend does
+exist and is RUNTIME-CONFIRMED serving over public HTTPS, provisioned this
+session with [`../deploy/aws/provision.sh`](../deploy/aws/provision.sh) on
+a real EC2 instance — case creation, evidence ingestion, evaluation, and
+preparation were all verified against it over the real public network path
+(Caddy → TLS → `nexo-api`), not only against `127.0.0.1`. The exact scope
+of that verification, and three real deploy-breaking bugs that
+provisioning a genuinely fresh instance found and fixed (a missing musl
+rustup target, insufficient RAM for the build, and Postgres's default
+`ident` auth rejecting the app's password), are in
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)'s deployment entry — not
 restated here.
 

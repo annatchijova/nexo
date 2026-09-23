@@ -51,43 +51,49 @@ pass (contrast, keyboard navigation, screen-reader labels), which matters
 here specifically because this is evidence a person may need to use under
 stress.
 
-## Personal deployment is prepared and locally validated, not yet running on AWS
+## Personal deployment is running on AWS, but as a bare IP-based instance
 
-[`../deploy/aws/README.md`](../deploy/aws/README.md) and
-[`../deploy/aws/provision.sh`](../deploy/aws/provision.sh) document and
-automate the install order for a single-tenant AWS instance (EC2,
-PostgreSQL, the Docker extractor sandbox, TLS via
-[`../deploy/aws/Caddyfile`](../deploy/aws/Caddyfile), backups).
+A real EC2 instance (Amazon Linux 2023, `t3.small`, `us-east-2`) was
+provisioned this session with [`../deploy/aws/provision.sh`](../deploy/aws/provision.sh)
+and is RUNTIME-CONFIRMED serving traffic: `nexo-api` behind Caddy, TLS via
+a real Let's Encrypt certificate for an `sslip.io` hostname (no custom
+domain owned yet — see "3. TLS" in
+[`../deploy/aws/README.md`](../deploy/aws/README.md) for why that still
+gets a real, browser-trusted certificate). Verified over real public HTTPS,
+through Caddy, not just against `127.0.0.1`: `/healthz`, both seeded
+bundles, evidence intake, an evaluation, and a preparation, with CORS
+confirmed to accept `https://nexo-web-sigma.vercel.app` as an origin — the
+Vercel frontend has not been pointed at it yet (`VITE_NEXO_API_BASE` is a
+Vercel-side setting outside this repository).
 
-What is RUNTIME-CONFIRMED this session, precisely, so the boundary is
-exact: `cargo build --release -p nexo-api` was built and run for real
-inside a fresh Amazon Linux 2023 container (`docker run amazonlinux:2023`)
-— package installation (`dnf install docker postgresql16-server ...`),
-the pinned Rust toolchain, and the release build all completed cleanly, and
-the resulting binary's `ldd` output resolves with no missing libraries.
-Separately (on the host, not in the AL2023 container), the release binary
-was run with the exact production-shaped environment file
-`provision.sh` generates — including `NEXO_AUDIT_HMAC_KEY`, which this
-session found was missing from the *previous* version of this document
-even though `nexo_app::audit::append` requires it for every mutating
-endpoint, meaning a deployment that followed the old instructions literally
-would have booted and then failed on the first evidence upload. Against
-that real release binary, this session ran the complete path over real
-HTTP — `/healthz`, both seeded bundles, evidence intake in all three kinds
-(`plain_text`, `eml`, `pdf`), an assertion, an evaluation reaching
-`actionable`/`supported`, both preparation kinds
-(`draft_request`, `evidence_package`), export, and independent verification
-of that export with the real `nexo-verify` CLI — all successful.
+Provisioning a genuinely fresh instance — not the AL2023 Docker container
+used for the previous validation pass — found and fixed three real bugs
+the container-based check could not have caught, each confirmed by reading
+the actual failure (`journalctl`, `dmesg`), not guessed:
 
-What remains a PLAUSIBLE HYPOTHESIS, not RUNTIME-CONFIRMED: `postgresql-setup
---initdb`, `systemctl enable`, and the `useradd`/`usermod` steps in
-`provision.sh` were not run against real systemd (a plain container has no
-systemd as PID 1) — these are CODE FACT, standard, well-established
-RHEL/AL commands, not independently exercised this session. No EC2 instance
-has actually been created, and no domain/TLS certificate has actually been
-issued. The Vercel-hosted web demo currently has no backend behind it — see
-the Technical README's Status section for exactly what the demo can and
-cannot do as a result.
+- **`x86_64-unknown-linux-musl` was never installed.** Every extractor
+  build failed (`can't find crate for std`) until `rustup target add` was
+  added to `scripts/build_extractors.sh`. It had only ever been run on
+  machines that already had the target from earlier, unrelated work.
+- **`t3.small`'s 2 GiB RAM is not enough to build the workspace.** `rustc`
+  was OOM-killed partway through (`nexo-report` alone pulls in a
+  PDF-rendering stack heavy enough to push past it) — confirmed via
+  `dmesg`'s `Out of memory: Killed process ... rustc`. Fixed with a 4 GiB
+  swapfile, added to `provision.sh` before the package-install step.
+- **AL2023's default `pg_hba.conf` uses `ident` for TCP connections**,
+  which rejects `nexo-api`'s password-authenticated `DATABASE_URL`
+  outright (`Ident authentication failed for user "nexo"`) — the service
+  looped in systemd's restart-on-failure without ever serving a request
+  until this was found in `journalctl -u nexo-api` and the relevant lines
+  switched to `scram-sha-256`.
+
+Still open, stated rather than left implicit: no custom domain (an
+`sslip.io` hostname works but isn't what a real deployment should stay on
+long-term); no backup automation (`pg_dump`, object-store snapshots — see
+"Backups" in the AWS README, not yet scripted); no monitoring/alerting
+beyond a basic AWS Budgets cost alarm; the instance was provisioned for
+this session's validation and its continued uptime past that is an
+operational decision, not a repository guarantee.
 
 ## The United States bundle has not started
 

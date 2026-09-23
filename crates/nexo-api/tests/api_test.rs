@@ -932,6 +932,7 @@ async fn ley_27736_bundle_is_actionable_once_content_is_identified() {
 
     // Evaluating against ley-27736 with the same case must be Actionable.
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -944,6 +945,7 @@ async fn ley_27736_bundle_is_actionable_once_content_is_identified() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let evaluation = body_json(response).await;
+    let evaluation_id = evaluation["evaluation_id"].as_i64().unwrap();
     let result = &evaluation["result"];
     assert_eq!(result["kind"], "actionable");
     assert_eq!(result["status"], "supported");
@@ -952,6 +954,90 @@ async fn ley_27736_bundle_is_actionable_once_content_is_identified() {
     for citation in legal_support {
         assert!(citation["proposition"].as_str().unwrap().contains("27.736"));
     }
+
+    // preparation.rs is bundle-agnostic by design (it resolves everything
+    // from the evaluation's own receipt binding, never from AppState's
+    // fixture) — proving that here, not just assuming it from the
+    // ley-25326 coverage in full_flow_evidence_to_actionable_citation.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/cases/{case_id}/preparations"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"evaluation_id": evaluation_id, "kind": "draft_request"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let preparation = body_json(response).await;
+    let preparation_id = preparation["preparation_id"].as_i64().unwrap();
+    assert_eq!(preparation["status"], "prepared");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{preparation_id}/export"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let export_response = body_json(response).await;
+    assert_eq!(export_response["status"], "exported");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/preparations/{preparation_id}/export/manifest"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let manifest = body_json(response).await;
+    assert_eq!(manifest["policy_bundle_digest"].as_str().unwrap_or("").len(), 64);
+    assert!(!manifest["artifacts"].as_array().unwrap().is_empty());
+
+    // Downloadable report over the ley-27736 evaluation too — proves
+    // download_report's bundle lookup (matching entry.seeded.policy_bundle
+    // against the evaluation's own policy_bundle_id) is not hardcoded to
+    // whichever bundle happens to be first in the map.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=md"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let md_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let md = String::from_utf8(md_bytes.to_vec()).unwrap();
+    assert!(md.contains("27.736"));
+    assert!(md.contains("ley-27736"));
 }
 
 #[tokio::test]

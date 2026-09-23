@@ -3,11 +3,15 @@
 //! This crate intentionally depends only on `nexo-integrity` and the standard
 //! filesystem APIs. It does not import the application, API, or database.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use nexo_integrity::{Manifest, ManifestEntry, Sha256Digest, hash_bytes};
+use nexo_integrity::{
+    audit_digest_v1, canonical_json, hash_bytes, Manifest, ManifestEntry, Sha256Digest,
+};
 use serde::Deserialize;
+use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
 struct ExportManifest {
@@ -57,6 +61,165 @@ pub enum VerifyError {
         expected: String,
         actual: String,
     },
+    AuditRead(std::io::Error),
+    AuditParse(serde_json::Error),
+    AuditSchema(u64),
+    AuditInvalid(String),
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditExport {
+    schema_version: u64,
+    chain_id: String,
+    chain_version: u64,
+    genesis_digest: String,
+    events: Vec<AuditExportEvent>,
+    checkpoint: AuditCheckpoint,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditExportEvent {
+    sequence: u64,
+    event_id: String,
+    occurred_at: String,
+    actor_id: i64,
+    case_id: Option<i64>,
+    event_kind: String,
+    event_payload: Value,
+    provenance_refs: Value,
+    previous_digest: String,
+    entry_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditCheckpoint {
+    chain_version: u64,
+    at_sequence: u64,
+    tip_digest: String,
+    entry_count: u64,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct AuditVerificationReport {
+    pub chain_id: String,
+    pub chain_version: u64,
+    pub entries: usize,
+    pub integrity_ok: bool,
+    pub linkage_ok: bool,
+    pub sequence_ok: bool,
+    pub genesis_ok: bool,
+    pub checkpoint_ok: bool,
+    pub complete_history: bool,
+    pub tip_digest: Sha256Digest,
+}
+
+/// Verifies audit-export-v1 without importing NEXO's API, application, or
+/// database code. The checkpoint must be retained with the export; it is the
+/// completeness witness for the presented history, not proof that the events
+/// themselves are true.
+pub fn verify_audit_export(path: impl AsRef<Path>) -> Result<AuditVerificationReport, VerifyError> {
+    let bytes = fs::read(path).map_err(VerifyError::AuditRead)?;
+    let export: AuditExport = serde_json::from_slice(&bytes).map_err(VerifyError::AuditParse)?;
+    if export.schema_version != 1 {
+        return Err(VerifyError::AuditSchema(export.schema_version));
+    }
+    if export.chain_id.is_empty() || export.chain_version != 1 {
+        return Err(VerifyError::AuditInvalid("unknown chain identity".into()));
+    }
+    if export.events.is_empty() {
+        return Err(VerifyError::AuditInvalid(
+            "audit-export-v1 requires at least one committed event".into(),
+        ));
+    }
+    let genesis = parse_audit_digest("genesis_digest", &export.genesis_digest)?;
+    if genesis != Sha256Digest::zero() {
+        return Err(VerifyError::AuditInvalid(
+            "audit-export-v1 requires zero genesis".into(),
+        ));
+    }
+
+    let mut previous = genesis;
+    let mut expected_sequence = 1_u64;
+    let mut integrity_ok = true;
+    let mut linkage_ok = true;
+    let mut sequence_ok = true;
+    let mut genesis_ok = true;
+    let mut tip = genesis;
+    let mut event_ids = HashSet::new();
+
+    for event in &export.events {
+        let previous_digest = parse_audit_digest("previous_digest", &event.previous_digest)?;
+        let entry_digest = parse_audit_digest("entry_digest", &event.entry_digest)?;
+        if event.sequence != expected_sequence {
+            sequence_ok = false;
+        }
+        if event.previous_digest != previous_digest.to_string() || previous_digest != previous {
+            linkage_ok = false;
+        }
+        if event.event_id != format!("{}:{}", export.chain_id, event.sequence)
+            || !event_ids.insert(&event.event_id)
+        {
+            integrity_ok = false;
+        }
+        let event_value = json!({
+            "schema_version": 1,
+            "actor_id": event.actor_id,
+            "case_id": event.case_id,
+            "event_id": event.event_id,
+            "event_kind": event.event_kind,
+            "event_payload": event.event_payload,
+            "occurred_at": event.occurred_at,
+            "provenance_refs": event.provenance_refs,
+        });
+        let canonical = canonical_json(&event_value)
+            .map_err(|_| VerifyError::AuditInvalid("event contains a float".into()))?;
+        let recomputed = audit_digest_v1(
+            &export.chain_id,
+            export.chain_version,
+            event.sequence,
+            &canonical,
+            previous_digest,
+        );
+        if recomputed != entry_digest {
+            integrity_ok = false;
+        }
+        previous = entry_digest;
+        tip = entry_digest;
+        expected_sequence = event.sequence.saturating_add(1);
+    }
+
+    if export
+        .events
+        .first()
+        .map(|event| event.previous_digest.as_str())
+        != Some(&genesis.to_string())
+    {
+        genesis_ok = false;
+    }
+    let checkpoint_tip =
+        parse_audit_digest("checkpoint.tip_digest", &export.checkpoint.tip_digest)?;
+    let checkpoint_ok = export.checkpoint.chain_version == export.chain_version
+        && export.checkpoint.at_sequence == export.events.len() as u64
+        && export.checkpoint.entry_count == export.events.len() as u64
+        && checkpoint_tip == tip;
+    let complete_history = checkpoint_ok && sequence_ok && genesis_ok;
+
+    Ok(AuditVerificationReport {
+        chain_id: export.chain_id,
+        chain_version: export.chain_version,
+        entries: export.events.len(),
+        integrity_ok,
+        linkage_ok,
+        sequence_ok,
+        genesis_ok,
+        checkpoint_ok,
+        complete_history,
+        tip_digest: tip,
+    })
+}
+
+fn parse_audit_digest(field: &'static str, value: &str) -> Result<Sha256Digest, VerifyError> {
+    Sha256Digest::from_hex(value).map_err(|_| VerifyError::AuditInvalid(format!("invalid {field}")))
 }
 
 pub fn verify_export(manifest_path: impl AsRef<Path>) -> Result<VerificationReport, VerifyError> {
@@ -226,6 +389,155 @@ mod tests {
             verify_export(root.join("manifest.json")),
             Err(VerifyError::InvalidArtifactPath(_))
         ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn write_audit_export(root: &Path, events: usize) {
+        let mut previous = Sha256Digest::zero();
+        let mut serialized = Vec::new();
+        for sequence in 1..=events as u64 {
+            let event = serde_json::json!({
+                "schema_version": 1,
+                "actor_id": 7,
+                "case_id": 9,
+                "event_id": format!("mutations:{sequence}"),
+                "event_kind": "case.created",
+                "event_payload": {"case_id": 9},
+                "occurred_at": "2026-09-22T12:00:00+00:00",
+                "provenance_refs": [],
+            });
+            let canonical = canonical_json(&event).unwrap();
+            let entry = audit_digest_v1("mutations", 1, sequence, &canonical, previous);
+            serialized.push(serde_json::json!({
+                "sequence": sequence,
+                "event_id": format!("mutations:{sequence}"),
+                "occurred_at": "2026-09-22T12:00:00+00:00",
+                "actor_id": 7,
+                "case_id": 9,
+                "event_kind": "case.created",
+                "event_payload": {"case_id": 9},
+                "provenance_refs": [],
+                "previous_digest": previous.to_string(),
+                "entry_digest": entry.to_string(),
+            }));
+            previous = entry;
+        }
+        let export = serde_json::json!({
+            "schema_version": 1,
+            "chain_id": "mutations",
+            "chain_version": 1,
+            "genesis_digest": Sha256Digest::zero().to_string(),
+            "events": serialized,
+            "checkpoint": {
+                "chain_version": 1,
+                "at_sequence": events,
+                "tip_digest": previous.to_string(),
+                "entry_count": events,
+            },
+        });
+        fs::write(
+            root.join("audit.json"),
+            serde_json::to_vec(&export).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn verifies_audit_export_and_checkpoint() {
+        let root = temp_export();
+        write_audit_export(&root, 2);
+        let report = verify_audit_export(root.join("audit.json")).unwrap();
+        assert!(report.integrity_ok);
+        assert!(report.linkage_ok);
+        assert!(report.sequence_ok);
+        assert!(report.genesis_ok);
+        assert!(report.checkpoint_ok);
+        assert!(report.complete_history);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn audit_export_rejects_payload_edit() {
+        let root = temp_export();
+        write_audit_export(&root, 2);
+        let path = root.join("audit.json");
+        let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        export["events"][0]["event_payload"]["case_id"] = serde_json::json!(99);
+        fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
+        let report = verify_audit_export(path).unwrap();
+        assert!(!report.integrity_ok);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn audit_export_rejects_metadata_edit() {
+        let root = temp_export();
+        write_audit_export(&root, 2);
+        let path = root.join("audit.json");
+        let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        export["events"][0]["occurred_at"] = serde_json::json!("2030-01-01T00:00:00+00:00");
+        fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
+        let report = verify_audit_export(path).unwrap();
+        assert!(!report.integrity_ok);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn local_verifier_cannot_reject_a_fully_rewritten_chain_without_external_witness() {
+        let root = temp_export();
+        write_audit_export(&root, 2);
+        let path = root.join("audit.json");
+        let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let mut previous = Sha256Digest::zero();
+        for (index, event) in export["events"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            event["event_payload"]["case_id"] = serde_json::json!(99);
+            let sequence = (index + 1) as u64;
+            let event_value = serde_json::json!({
+                "schema_version": 1,
+                "actor_id": event["actor_id"],
+                "case_id": event["case_id"],
+                "event_id": event["event_id"],
+                "event_kind": event["event_kind"],
+                "event_payload": event["event_payload"],
+                "occurred_at": event["occurred_at"],
+                "provenance_refs": event["provenance_refs"],
+            });
+            let digest = audit_digest_v1(
+                "mutations",
+                1,
+                sequence,
+                &canonical_json(&event_value).unwrap(),
+                previous,
+            );
+            event["previous_digest"] = serde_json::json!(previous.to_string());
+            event["entry_digest"] = serde_json::json!(digest.to_string());
+            previous = digest;
+        }
+        export["checkpoint"]["tip_digest"] = serde_json::json!(previous.to_string());
+        fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
+        let report = verify_audit_export(path).unwrap();
+        assert!(report.integrity_ok);
+        assert!(report.linkage_ok);
+        assert!(report.complete_history);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn audit_export_rejects_tail_truncation_against_checkpoint() {
+        let root = temp_export();
+        write_audit_export(&root, 3);
+        let path = root.join("audit.json");
+        let mut export: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        export["events"].as_array_mut().unwrap().pop();
+        fs::write(&path, serde_json::to_vec(&export).unwrap()).unwrap();
+        let report = verify_audit_export(path).unwrap();
+        assert!(!report.checkpoint_ok);
+        assert!(!report.complete_history);
         fs::remove_dir_all(root).unwrap();
     }
 }

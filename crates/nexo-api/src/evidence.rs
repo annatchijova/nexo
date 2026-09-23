@@ -102,6 +102,20 @@ pub async fn ingest_plaintext_evidence(
         provenance,
     )
     .await?;
+    nexo_app::audit::append(
+        &mut tx,
+        actor,
+        Some(case),
+        "evidence.artifact_ingested",
+        serde_json::json!({
+            "artifact_node_id": artifact.0,
+            "digest": digest.to_string(),
+            "byte_size": bytes.len(),
+        }),
+        serde_json::json!([{"provenance_id": provenance.0}]),
+    )
+    .await
+    .map_err(repository::RepoError::from)?;
     tx.commit().await?;
 
     // extract_plaintext is synchronous (it shells out to `docker` and
@@ -133,6 +147,19 @@ pub async fn ingest_plaintext_evidence(
                 )
                 .await?;
             }
+            nexo_app::audit::append(
+                &mut tx,
+                actor,
+                Some(case),
+                "evidence.extraction_accepted",
+                serde_json::json!({
+                    "artifact_node_id": artifact.0,
+                    "observation_count": items.len(),
+                }),
+                serde_json::json!([]),
+            )
+            .await
+            .map_err(repository::RepoError::from)?;
             tx.commit().await?;
             Ok(IngestOutcome {
                 artifact_node_id: artifact.0,
@@ -143,6 +170,16 @@ pub async fn ingest_plaintext_evidence(
         PlaintextExtraction::Failure(reason) => {
             let mut tx = pool.begin().await?;
             repository::set_ingestion_status(&mut tx, ingestion, "rejected").await?;
+            nexo_app::audit::append(
+                &mut tx,
+                actor,
+                Some(case),
+                "evidence.extraction_rejected",
+                serde_json::json!({"artifact_node_id": artifact.0, "reason": reason}),
+                serde_json::json!([]),
+            )
+            .await
+            .map_err(repository::RepoError::from)?;
             tx.commit().await?;
             Ok(IngestOutcome {
                 artifact_node_id: artifact.0,

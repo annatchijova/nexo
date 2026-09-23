@@ -37,3 +37,16 @@ cargo run -p nexo-verifier -- path/to/export/manifest.json
 
 Exit code `0` means every check passed. Exit code `1` means the export was
 rejected; exit code `2` means the command line was invalid.
+
+For the selected mutating-event history, the independent verifier also accepts
+an `audit-export-v1` document:
+
+```text
+cargo run -p nexo-verifier -- audit path/to/audit-export.json
+```
+
+Audit verification checks the explicit genesis, canonical full-event digest,
+previous-digest linkage, sequence continuity, and retained checkpoint as
+separate properties. It does not claim truth of event content, independent
+time witnessing, or resistance to an operator who can rewrite the complete
+local database and its checkpoint.

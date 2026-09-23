@@ -244,11 +244,12 @@ gives:
   preparation-insert time, and every invalidated preparation carries a
   non-empty reason. New rows always start in `prepared`; export and
   invalidation are explicit later transitions.
-- **`audit_log`** — append-only, hash-chained event record (Step 2 of
-  `plan.md` defines the chain itself in `nexo-integrity`); this layer only
-  guarantees every command that mutates state also appends exactly one audit
-  row, in the same transaction, and a database trigger rejects updates and
-  deletes; event timestamps are assigned by the database clock.
+- **`audit_log`** — the PostgreSQL projection of `audit_chain/v1`. Audited
+  application mutations append a canonical full event, advance the chain tip,
+  and record a checkpoint in the same transaction. The independent verifier
+  contract and the limits of this local checkpoint are defined in
+  `docs/AUDIT_CHAIN_V1_CONTRACT.md`; the table's append-only trigger alone is
+  not a cryptographic guarantee.
 
 ## What this layer explicitly does not do
 

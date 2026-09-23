@@ -7,7 +7,7 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use nexo_app::repository::{
-    self, ActionRouteRowId, ActorRowId, CaseRowId, Pool, PolicyBundleRowId,
+    self, ActionRouteRowId, ActorRowId, CaseRowId, PolicyBundleRowId, Pool,
 };
 use sqlx::Row;
 
@@ -160,6 +160,20 @@ pub async fn seed_bundle(
     )
     .await?;
     repository::activate_policy_bundle(&mut tx, policy_bundle, seeded_by).await?;
+    nexo_app::audit::append(
+        &mut tx,
+        seeded_by,
+        Some(bootstrap_case),
+        "policy_bundle.activated",
+        serde_json::json!({
+            "policy_bundle_id": policy_bundle.0,
+            "action_route_id": action_route.0,
+            "bundle_key": handle.key,
+            "policy_version": params.policy_version,
+        }),
+        serde_json::json!([{"provenance_id": provenance.0}]),
+    )
+    .await?;
 
     tx.commit().await?;
 
@@ -219,7 +233,8 @@ pub async fn seed_ley_27736(
             captured_source_issuer: nexo_policy_ar_digital_violence::CAPTURED_SOURCE_ISSUER,
             captured_source_locator: nexo_policy_ar_digital_violence::CAPTURED_SOURCE_LOCATOR,
             claim_effective_from: NaiveDate::from_ymd_opt(2023, 10, 23).unwrap(),
-            route_title: "Solicitar orden judicial de cese y remoción de contenido de violencia digital",
+            route_title:
+                "Solicitar orden judicial de cese y remoción de contenido de violencia digital",
         },
         seeded_by,
     )

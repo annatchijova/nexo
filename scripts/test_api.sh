@@ -36,6 +36,8 @@ fi
 echo "== applying migration =="
 psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
   -f crates/nexo-app/migrations/0001_init.sql >/dev/null
+psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
+  -f crates/nexo-app/migrations/0002_audit_chain_v1.sql >/dev/null
 
 if ! docker image inspect nexo-extractor-plaintext:local >/dev/null 2>&1; then
   echo "== building extractor image (not found) =="

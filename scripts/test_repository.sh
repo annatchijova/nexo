@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs nexo-app's repository integration tests against a disposable
-# PostgreSQL instance: applies migrations/0001_init.sql exactly once, then
+# PostgreSQL instance: applies the versioned migrations exactly once, then
 # runs the test suite (which connects many times, concurrently, the same
 # way a real deployment would after its own one-time migration).
 set -euo pipefail
@@ -37,6 +37,8 @@ fi
 echo "== applying migration =="
 psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
   -f crates/nexo-app/migrations/0001_init.sql >/dev/null
+psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
+  -f crates/nexo-app/migrations/0002_audit_chain_v1.sql >/dev/null
 
 export DATABASE_URL="postgres://postgres:nexo@127.0.0.1:${PORT}/${DB}"
 echo "== running repository integration tests =="

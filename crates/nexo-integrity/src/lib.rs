@@ -34,6 +34,13 @@ pub enum DigestHexError {
 }
 
 impl Sha256Digest {
+    pub const fn zero() -> Self {
+        Self([0_u8; 32])
+    }
+
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -89,6 +96,41 @@ pub fn canonical_bytes(value: &CanonicalValue) -> Vec<u8> {
 
 pub fn seal(value: &CanonicalValue) -> Sha256Digest {
     hash_bytes(&canonical_bytes(value))
+}
+
+/// Converts JSON into the typed canonical representation used by integrity
+/// records. JSON floating-point numbers are rejected: an audit event must not
+/// depend on a renderer's or platform's float representation.
+pub fn canonical_json(value: &serde_json::Value) -> Result<CanonicalValue, CanonicalJsonError> {
+    match value {
+        serde_json::Value::Null => Ok(CanonicalValue::Null),
+        serde_json::Value::Bool(value) => Ok(CanonicalValue::Bool(*value)),
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                Ok(CanonicalValue::I64(value))
+            } else if let Some(value) = value.as_u64() {
+                Ok(CanonicalValue::U64(value))
+            } else {
+                Err(CanonicalJsonError::Float)
+            }
+        }
+        serde_json::Value::String(value) => Ok(CanonicalValue::Text(value.clone())),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .map(canonical_json)
+            .collect::<Result<Vec<_>, _>>()
+            .map(CanonicalValue::List),
+        serde_json::Value::Object(values) => values
+            .iter()
+            .map(|(key, value)| Ok((key.clone(), canonical_json(value)?)))
+            .collect::<Result<BTreeMap<_, _>, CanonicalJsonError>>()
+            .map(CanonicalValue::Map),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CanonicalJsonError {
+    Float,
 }
 
 /// An append-only event whose digest commits its complete payload and predecessor.
@@ -182,6 +224,28 @@ fn audit_digest(
         previous
             .map(|d| CanonicalValue::Bytes(d.0.to_vec()))
             .unwrap_or(CanonicalValue::Null),
+    );
+    fields.insert("sequence".into(), CanonicalValue::U64(sequence));
+    seal(&CanonicalValue::Map(fields))
+}
+
+/// Versioned audit-event digest for the persistent `audit_chain/v1` format.
+/// The chain identity is included so an event cannot be transplanted between
+/// chains while retaining a valid digest.
+pub fn audit_digest_v1(
+    chain_id: &str,
+    chain_version: u64,
+    sequence: u64,
+    event: &CanonicalValue,
+    previous: Sha256Digest,
+) -> Sha256Digest {
+    let mut fields = BTreeMap::new();
+    fields.insert("chain_id".into(), CanonicalValue::Text(chain_id.into()));
+    fields.insert("chain_version".into(), CanonicalValue::U64(chain_version));
+    fields.insert("event".into(), event.clone());
+    fields.insert(
+        "previous".into(),
+        CanonicalValue::Bytes(previous.0.to_vec()),
     );
     fields.insert("sequence".into(), CanonicalValue::U64(sequence));
     seal(&CanonicalValue::Map(fields))
@@ -301,7 +365,10 @@ impl Manifest {
             return Err(ManifestError::EmptyLabel);
         }
         artifacts.sort_by(|a, b| a.label.cmp(&b.label));
-        if artifacts.windows(2).any(|pair| pair[0].label == pair[1].label) {
+        if artifacts
+            .windows(2)
+            .any(|pair| pair[0].label == pair[1].label)
+        {
             return Err(ManifestError::DuplicateLabel);
         }
         Ok(Self {
@@ -388,6 +455,26 @@ mod tests {
         assert_ne!(
             seal(&CanonicalValue::Text("x".into())),
             seal(&CanonicalValue::Bytes(b"x".to_vec()))
+        );
+    }
+
+    #[test]
+    fn canonical_json_rejects_floating_point_audit_values() {
+        let value = serde_json::json!({"score": 0.5});
+        assert_eq!(canonical_json(&value), Err(CanonicalJsonError::Float));
+    }
+
+    #[test]
+    fn audit_v1_binds_chain_identity_and_version() {
+        let event = CanonicalValue::Text("event".into());
+        let previous = Sha256Digest::zero();
+        assert_ne!(
+            audit_digest_v1("mutations", 1, 1, &event, previous),
+            audit_digest_v1("other", 1, 1, &event, previous)
+        );
+        assert_ne!(
+            audit_digest_v1("mutations", 1, 1, &event, previous),
+            audit_digest_v1("mutations", 2, 1, &event, previous)
         );
     }
 

@@ -21,6 +21,7 @@ pub type Tx<'a> = Transaction<'a, Postgres>;
 #[derive(Debug)]
 pub enum RepoError {
     Db(sqlx::Error),
+    Integrity(String),
     /// A route required at least one claim id, but none were supplied —
     /// mirrors `nexo_core::NormativeClaim`'s own non-empty rule, checked
     /// again here because a claim/route insert is not routed through
@@ -39,6 +40,15 @@ impl std::error::Error for RepoError {}
 impl From<sqlx::Error> for RepoError {
     fn from(value: sqlx::Error) -> Self {
         Self::Db(value)
+    }
+}
+
+impl From<crate::audit::AuditError> for RepoError {
+    fn from(value: crate::audit::AuditError) -> Self {
+        match value {
+            crate::audit::AuditError::Database(error) => Self::Db(error),
+            other => Self::Integrity(format!("audit error: {other:?}")),
+        }
     }
 }
 
@@ -98,6 +108,19 @@ pub async fn apply_migration(pool: &Pool) -> Result<(), RepoError> {
             .execute(&mut *tx)
             .await?;
     }
+    let audit_chain_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+             SELECT 1 FROM nexo_schema_migrations
+             WHERE version = '0002_audit_chain_v1'
+         )",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if !audit_chain_applied {
+        sqlx::raw_sql(crate::AUDIT_CHAIN_MIGRATION)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -114,12 +137,19 @@ pub async fn create_actor(pool: &Pool, credential: &str) -> Result<ActorRowId, R
         .fetch_one(&mut *tx)
         .await?;
     let actor_id: i64 = row.try_get("id")?;
-    sqlx::query(
-        "INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)",
+    sqlx::query("INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)")
+        .bind(actor_id)
+        .bind(digest)
+        .execute(&mut *tx)
+        .await?;
+    crate::audit::append(
+        &mut tx,
+        ActorRowId(actor_id),
+        None,
+        "actor.created",
+        serde_json::json!({"actor_id": actor_id}),
+        serde_json::json!([]),
     )
-    .bind(actor_id)
-    .bind(digest)
-    .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(ActorRowId(actor_id))
@@ -134,33 +164,56 @@ pub async fn issue_actor_credential(
     credential: &str,
 ) -> Result<(), RepoError> {
     let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
-    sqlx::query(
-        "INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)",
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO actor_credentials (actor_id, credential_digest) VALUES ($1, $2)")
+        .bind(actor.0)
+        .bind(digest)
+        .execute(&mut *tx)
+        .await?;
+    crate::audit::append(
+        &mut tx,
+        actor,
+        None,
+        "actor.credential_issued",
+        serde_json::json!({"actor_id": actor.0}),
+        serde_json::json!([]),
     )
-    .bind(actor.0)
-    .bind(digest)
-    .execute(pool)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
 /// Revokes a credential without exposing its digest or the actor it belonged
 /// to. The boolean tells an administrative caller whether an active row was
 /// actually changed.
-pub async fn revoke_actor_credential(
-    pool: &Pool,
-    credential: &str,
-) -> Result<bool, RepoError> {
+pub async fn revoke_actor_credential(pool: &Pool, credential: &str) -> Result<bool, RepoError> {
     let digest = nexo_integrity::hash_bytes(credential.as_bytes()).to_string();
+    let mut tx = pool.begin().await?;
     let result = sqlx::query(
         "UPDATE actor_credentials
          SET revoked_at = now()
-         WHERE credential_digest = $1 AND revoked_at IS NULL",
+         WHERE credential_digest = $1 AND revoked_at IS NULL
+         RETURNING actor_id",
     )
     .bind(digest)
-    .execute(pool)
+    .fetch_optional(&mut *tx)
     .await?;
-    Ok(result.rows_affected() == 1)
+    let Some(row) = result else {
+        tx.rollback().await?;
+        return Ok(false);
+    };
+    let actor = ActorRowId(row.try_get("actor_id")?);
+    crate::audit::append(
+        &mut tx,
+        actor,
+        None,
+        "actor.credential_revoked",
+        serde_json::json!({"actor_id": actor.0}),
+        serde_json::json!([]),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 pub async fn find_actor_by_identity(
@@ -172,18 +225,30 @@ pub async fn find_actor_by_identity(
         "SELECT actor_id FROM actor_credentials
          WHERE credential_digest = $1 AND revoked_at IS NULL",
     )
-        .bind(digest)
-        .fetch_optional(pool)
-        .await?;
+    .bind(digest)
+    .fetch_optional(pool)
+    .await?;
     Ok(row.map(|r| ActorRowId(r.get("actor_id"))))
 }
 
 pub async fn create_case(pool: &Pool, owner: ActorRowId) -> Result<CaseRowId, RepoError> {
+    let mut tx = pool.begin().await?;
     let row = sqlx::query("INSERT INTO cases (owner_actor_id) VALUES ($1) RETURNING id")
         .bind(owner.0)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
-    Ok(CaseRowId(row.try_get("id")?))
+    let case = CaseRowId(row.try_get("id")?);
+    crate::audit::append(
+        &mut tx,
+        owner,
+        Some(case),
+        "case.created",
+        serde_json::json!({"case_id": case.0}),
+        serde_json::json!([]),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(case)
 }
 
 /// Returns the case's owner, or `None` if no case with this id exists.
@@ -339,7 +404,9 @@ pub async fn ensure_tool_version(
 
 async fn lock_case_and_next_node_id(tx: &mut Tx<'_>, case: CaseRowId) -> Result<i64, RepoError> {
     lock_case(tx, case).await?;
-    let row = sqlx::query("SELECT COALESCE(MAX(node_id), 0) + 1 AS next FROM case_nodes WHERE case_id = $1")
+    let row = sqlx::query(
+        "SELECT COALESCE(MAX(node_id), 0) + 1 AS next FROM case_nodes WHERE case_id = $1",
+    )
     .bind(case.0)
     .fetch_one(&mut **tx)
     .await?;
@@ -422,12 +489,18 @@ pub async fn insert_user_assertion_node(
     confirmed: bool,
 ) -> Result<CaseNodeId, RepoError> {
     let node_id = lock_case_and_next_node_id(tx, case).await?;
-    sqlx::query("INSERT INTO case_nodes (case_id, node_id, kind) VALUES ($1, $2, 'user_assertion')")
-        .bind(case.0)
-        .bind(node_id)
-        .execute(&mut **tx)
-        .await?;
-    let confirmation = if confirmed { "confirmed" } else { "unconfirmed" };
+    sqlx::query(
+        "INSERT INTO case_nodes (case_id, node_id, kind) VALUES ($1, $2, 'user_assertion')",
+    )
+    .bind(case.0)
+    .bind(node_id)
+    .execute(&mut **tx)
+    .await?;
+    let confirmation = if confirmed {
+        "confirmed"
+    } else {
+        "unconfirmed"
+    };
     sqlx::query(
         "INSERT INTO user_assertion_nodes (case_id, node_id, actor_id, recorded_at, confirmation)
          VALUES ($1, $2, $3, $4, $5::confirmation_state)",
@@ -984,13 +1057,14 @@ pub async fn find_active_preparation(
     Ok(row.map(|row| (row.get("id"), row.get("output_digest_hex"))))
 }
 
-pub async fn preparation_status(pool: &Pool, preparation: i64) -> Result<Option<String>, RepoError> {
-    let row = sqlx::query(
-        "SELECT status::text AS status FROM preparations WHERE id = $1",
-    )
-    .bind(preparation)
-    .fetch_optional(pool)
-    .await?;
+pub async fn preparation_status(
+    pool: &Pool,
+    preparation: i64,
+) -> Result<Option<String>, RepoError> {
+    let row = sqlx::query("SELECT status::text AS status FROM preparations WHERE id = $1")
+        .bind(preparation)
+        .fetch_optional(pool)
+        .await?;
     Ok(row.map(|row| row.get("status")))
 }
 

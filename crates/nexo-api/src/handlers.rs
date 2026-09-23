@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path as FsPath, PathBuf};
 
-use nexo_integrity::{hash_bytes, Sha256Digest};
 use nexo_app::repository::{self, CaseRowId};
 use nexo_core::evaluate;
+use nexo_integrity::{hash_bytes, Sha256Digest};
 
 use crate::auth::{authorize_case, AuthenticatedActor};
 use crate::{explain, projection, AppState};
@@ -173,9 +173,20 @@ pub async fn add_assertion(
         .begin()
         .await
         .map_err(internal("could not start transaction"))?;
-    let node = repository::insert_user_assertion_node(&mut tx, case, actor, Utc::now(), request.confirmed)
-        .await
-        .map_err(internal("could not insert assertion"))?;
+    let node =
+        repository::insert_user_assertion_node(&mut tx, case, actor, Utc::now(), request.confirmed)
+            .await
+            .map_err(internal("could not insert assertion"))?;
+    nexo_app::audit::append(
+        &mut tx,
+        actor,
+        Some(case),
+        "case.user_assertion_added",
+        serde_json::json!({"node_id": node.0, "confirmed": request.confirmed}),
+        serde_json::json!([]),
+    )
+    .await
+    .map_err(internal("could not append assertion audit event"))?;
     tx.commit().await.map_err(internal("could not commit"))?;
 
     Ok(Json(AddAssertionResponse {
@@ -234,19 +245,19 @@ pub async fn prepare_case(
         .bundles
         .values()
         .find(|entry| entry.seeded.policy_bundle.0 == binding.policy_bundle_id)
-        .ok_or((StatusCode::CONFLICT, "evaluation's policy bundle is no longer seeded"))?;
+        .ok_or((
+            StatusCode::CONFLICT,
+            "evaluation's policy bundle is no longer seeded",
+        ))?;
 
     let (projection, resolver, _) =
         crate::projection::build_projection(&state.pool, case, &entry.handle)
             .await
             .map_err(internal("could not build preparation projection"))?;
     let today = Utc::now().date_naive();
-    let reference_date = nexo_core::CivilDate::try_new(
-        today.year(),
-        today.month() as u8,
-        today.day() as u8,
-    )
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "invalid reference date"))?;
+    let reference_date =
+        nexo_core::CivilDate::try_new(today.year(), today.month() as u8, today.day() as u8)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "invalid reference date"))?;
     let evaluation = nexo_core::evaluate(
         &projection,
         &entry.handle.bundle,
@@ -256,7 +267,12 @@ pub async fn prepare_case(
     );
     let action = match &evaluation {
         nexo_core::ActionEvaluation::Actionable(action) if action.is_available() => action.clone(),
-        _ => return Err((StatusCode::CONFLICT, "evaluation is not currently preparable")),
+        _ => {
+            return Err((
+                StatusCode::CONFLICT,
+                "evaluation is not currently preparable",
+            ))
+        }
     };
     let rendered = explain::render(&evaluation, &resolver, &entry.handle.citations);
     // The prepared material is the same human-readable report a person
@@ -293,10 +309,9 @@ pub async fn prepare_case(
         | crate::preparation::PreparationVerificationError::EvaluationNotSupported
         | crate::preparation::PreparationVerificationError::ActionFingerprintMismatch
         | crate::preparation::PreparationVerificationError::InputManifestChanged
-        | crate::preparation::PreparationVerificationError::PolicyBundleChanged => (
-            StatusCode::CONFLICT,
-            "evaluation is stale or unsupported",
-        ),
+        | crate::preparation::PreparationVerificationError::PolicyBundleChanged => {
+            (StatusCode::CONFLICT, "evaluation is stale or unsupported")
+        }
         _ => internal("could not persist preparation")(error),
     })?;
     let status = repository::preparation_status(&state.pool, preparation_id)
@@ -327,22 +342,25 @@ async fn verified_export_manifest(
         .join(format!("case-{case_id}"))
         .join(format!("preparation-{preparation_id}"));
     let manifest_path = export_dir.join("manifest.json");
-    let report = nexo_verifier::verify_export(&manifest_path)
-        .map_err(|_| (StatusCode::CONFLICT, "export failed independent verification"))?;
-    let expected_manifest = repository::preparation_export_manifest_digest_for_case(
-        &state.pool,
-        case,
-        preparation_id,
-    )
-    .await
-    .map_err(internal("could not read export identity"))?
-    .ok_or((StatusCode::CONFLICT, "export has no durable manifest identity"))?;
+    let report = nexo_verifier::verify_export(&manifest_path).map_err(|_| {
+        (
+            StatusCode::CONFLICT,
+            "export failed independent verification",
+        )
+    })?;
+    let expected_manifest =
+        repository::preparation_export_manifest_digest_for_case(&state.pool, case, preparation_id)
+            .await
+            .map_err(internal("could not read export identity"))?
+            .ok_or((
+                StatusCode::CONFLICT,
+                "export has no durable manifest identity",
+            ))?;
     if report.manifest_digest.to_string() != expected_manifest {
         return Err((StatusCode::CONFLICT, "export manifest identity mismatch"));
     }
     let manifest = serde_json::from_slice(
-        &fs::read(&manifest_path)
-            .map_err(internal("could not read exported manifest"))?,
+        &fs::read(&manifest_path).map_err(internal("could not read exported manifest"))?,
     )
     .map_err(internal("could not parse exported manifest"))?;
     Ok((export_dir, manifest))
@@ -395,10 +413,9 @@ pub async fn export_preparation(
             (StatusCode::NOT_FOUND, "preparation not found")
         }
         crate::preparation::PreparationVerificationError::PreparationNotPrepared
-        | crate::preparation::PreparationVerificationError::ExistingExportInvalid(_) => (
-            StatusCode::CONFLICT,
-            "preparation cannot be exported",
-        ),
+        | crate::preparation::PreparationVerificationError::ExistingExportInvalid(_) => {
+            (StatusCode::CONFLICT, "preparation cannot be exported")
+        }
         _ => internal("could not export preparation")(error),
     })?;
     Ok(Json(ExportResponse {
@@ -422,9 +439,9 @@ pub async fn read_export_artifact(
     let artifact = manifest["artifacts"]
         .as_array()
         .and_then(|artifacts| {
-            artifacts.iter().find(|artifact| {
-                artifact["digest"].as_str() == Some(digest.as_str())
-            })
+            artifacts
+                .iter()
+                .find(|artifact| artifact["digest"].as_str() == Some(digest.as_str()))
         })
         .ok_or((StatusCode::NOT_FOUND, "artifact not found in export"))?;
     let relative = artifact["path"]
@@ -451,8 +468,8 @@ pub async fn read_export_artifact(
     if !canonical_artifact.starts_with(&root) {
         return Err((StatusCode::CONFLICT, "export artifact escaped export root"));
     }
-    let bytes = fs::read(canonical_artifact)
-        .map_err(internal("could not read exported artifact"))?;
+    let bytes =
+        fs::read(canonical_artifact).map_err(internal("could not read exported artifact"))?;
     if hash_bytes(&bytes) != expected {
         return Err((StatusCode::CONFLICT, "export artifact failed verification"));
     }
@@ -460,7 +477,12 @@ pub async fn read_export_artifact(
         .status(StatusCode::OK)
         .header("content-type", "application/octet-stream")
         .body(axum::body::Body::from(bytes))
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build artifact response"))
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not build artifact response",
+            )
+        })
 }
 
 #[derive(Deserialize)]
@@ -504,7 +526,11 @@ pub async fn evaluate_case(
                     "case has no evidence to evaluate yet",
                 ));
             }
-            Err(err) => return Err(internal::<projection::ProjectionError>("could not build projection")(err)),
+            Err(err) => {
+                return Err(internal::<projection::ProjectionError>(
+                    "could not build projection",
+                )(err))
+            }
         };
 
     // The core never reads an ambient clock (docs/CASE_GRAPH_CONTRACT.md,
@@ -515,12 +541,9 @@ pub async fn evaluate_case(
     // it, and every evaluation after that point would have been dated
     // wrong without any error to signal it.
     let today = Utc::now().date_naive();
-    let reference_date = nexo_core::CivilDate::try_new(
-        today.year(),
-        today.month() as u8,
-        today.day() as u8,
-    )
-    .expect("chrono's own calendar validation matches CivilDate's");
+    let reference_date =
+        nexo_core::CivilDate::try_new(today.year(), today.month() as u8, today.day() as u8)
+            .expect("chrono's own calendar validation matches CivilDate's");
     let result = evaluate(
         &projection,
         &entry.handle.bundle,
@@ -557,13 +580,10 @@ pub async fn evaluate_case(
     .map_err(internal("could not record evaluation"))?;
     if result_kind == "actionable" && action_status == Some("supported") {
         let action_digest = action_digest.expect("actionable results have an action digest");
-        let input_manifest_digest = repository::upsert_digest(
-            &mut tx,
-            "sha256",
-            &input_manifest_digest,
-        )
-        .await
-        .map_err(internal("could not record input manifest digest"))?;
+        let input_manifest_digest =
+            repository::upsert_digest(&mut tx, "sha256", &input_manifest_digest)
+                .await
+                .map_err(internal("could not record input manifest digest"))?;
         let result_digest = repository::upsert_digest(&mut tx, "sha256", &result_digest)
             .await
             .map_err(internal("could not record result digest"))?;
@@ -586,6 +606,22 @@ pub async fn evaluate_case(
         .await
         .map_err(internal("could not record evaluation receipt"))?;
     }
+    nexo_app::audit::append(
+        &mut tx,
+        actor,
+        Some(case),
+        "case.evaluated",
+        serde_json::json!({
+            "evaluation_id": evaluation.0,
+            "result_kind": result_kind,
+            "action_status": action_status,
+            "result_digest": result_digest,
+            "input_manifest_digest": input_manifest_digest,
+        }),
+        serde_json::json!([]),
+    )
+    .await
+    .map_err(internal("could not append evaluation audit event"))?;
     tx.commit().await.map_err(internal("could not commit"))?;
 
     Ok(Json(EvaluateResponse {
@@ -600,9 +636,9 @@ fn canonical_json(value: &Value) -> nexo_integrity::CanonicalValue {
         Value::Bool(value) => nexo_integrity::CanonicalValue::Bool(*value),
         Value::Number(value) => nexo_integrity::CanonicalValue::Text(value.to_string()),
         Value::String(value) => nexo_integrity::CanonicalValue::Text(value.clone()),
-        Value::Array(values) => nexo_integrity::CanonicalValue::List(
-            values.iter().map(canonical_json).collect(),
-        ),
+        Value::Array(values) => {
+            nexo_integrity::CanonicalValue::List(values.iter().map(canonical_json).collect())
+        }
         Value::Object(values) => nexo_integrity::CanonicalValue::Map(
             values
                 .iter()
@@ -766,7 +802,12 @@ pub async fn download_report(
             format!("attachment; filename=\"{filename}\""),
         )
         .body(axum::body::Body::from(body))
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "could not build report response"))
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not build report response",
+            )
+        })
 }
 
 #[derive(Serialize)]

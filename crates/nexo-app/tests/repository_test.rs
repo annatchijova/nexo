@@ -11,7 +11,7 @@
 use chrono::Utc;
 use nexo_app::repository::{self, ActorRowId};
 use serde_json::json;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 
 /// Connects only — does not apply the migration. Tests run concurrently
 /// against one shared database (`scripts/test_repository.sh` applies the
@@ -74,20 +74,22 @@ async fn credentials_rotate_with_overlap_then_revoke() {
         Some(actor)
     );
 
-    assert!(repository::revoke_actor_credential(&pool, &old).await.unwrap());
-    assert!(
-        repository::find_actor_by_identity(&pool, &old)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(repository::revoke_actor_credential(&pool, &old)
+        .await
+        .unwrap());
+    assert!(repository::find_actor_by_identity(&pool, &old)
+        .await
+        .unwrap()
+        .is_none());
     assert_eq!(
         repository::find_actor_by_identity(&pool, &replacement)
             .await
             .unwrap(),
         Some(actor)
     );
-    assert!(!repository::revoke_actor_credential(&pool, &old).await.unwrap());
+    assert!(!repository::revoke_actor_credential(&pool, &old)
+        .await
+        .unwrap());
 }
 
 async fn unique_actor(pool: &PgPool, label: &str) -> ActorRowId {
@@ -105,12 +107,11 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let other_actor = unique_actor(&pool, "other-owner").await;
 
     let mut actor_update_tx = pool.begin().await.unwrap();
-    let actor_update = sqlx::query(
-        "UPDATE actors SET external_identity = 'tampered-identity' WHERE id = $1",
-    )
-    .bind(actor.0)
-    .execute(&mut *actor_update_tx)
-    .await;
+    let actor_update =
+        sqlx::query("UPDATE actors SET external_identity = 'tampered-identity' WHERE id = $1")
+            .bind(actor.0)
+            .execute(&mut *actor_update_tx)
+            .await;
     assert!(
         actor_update.is_err(),
         "external actor identity must be immutable"
@@ -120,13 +121,11 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     let case = repository::create_case(&pool, actor).await.unwrap();
 
     let mut owner_update_tx = pool.begin().await.unwrap();
-    let owner_update = sqlx::query(
-        "UPDATE cases SET owner_actor_id = $1 WHERE id = $2",
-    )
-    .bind(other_actor.0)
-    .bind(case.0)
-    .execute(&mut *owner_update_tx)
-    .await;
+    let owner_update = sqlx::query("UPDATE cases SET owner_actor_id = $1 WHERE id = $2")
+        .bind(other_actor.0)
+        .bind(case.0)
+        .execute(&mut *owner_update_tx)
+        .await;
     assert!(owner_update.is_err(), "case ownership must be immutable");
     owner_update_tx.rollback().await.unwrap();
 
@@ -146,13 +145,15 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     );
 
     let mut case_time_update_tx = pool.begin().await.unwrap();
-    let case_time_update = sqlx::query(
-        "UPDATE cases SET created_at = created_at + interval '1 second' WHERE id = $1",
-    )
-    .bind(case.0)
-    .execute(&mut *case_time_update_tx)
-    .await;
-    assert!(case_time_update.is_err(), "case creation time must be immutable");
+    let case_time_update =
+        sqlx::query("UPDATE cases SET created_at = created_at + interval '1 second' WHERE id = $1")
+            .bind(case.0)
+            .execute(&mut *case_time_update_tx)
+            .await;
+    assert!(
+        case_time_update.is_err(),
+        "case creation time must be immutable"
+    );
     case_time_update_tx.rollback().await.unwrap();
 
     let mut assertion_actor_tx = pool.begin().await.unwrap();
@@ -180,40 +181,59 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     assertion_actor_tx.rollback().await.unwrap();
 
     let mut audit_insert_tx = pool.begin().await.unwrap();
-    let audit_row = sqlx::query(
-        "INSERT INTO audit_log
-            (case_id, actor_id, occurred_at, event_kind, event_payload, entry_hash)
-         VALUES ($1, $2, TIMESTAMPTZ '2000-01-01 00:00:00+00',
-                 'test.event', '{}'::jsonb, $3)
-         RETURNING id",
+    let audit_event = nexo_app::audit::append(
+        &mut audit_insert_tx,
+        actor,
+        Some(case),
+        "test.event",
+        serde_json::json!({}),
+        serde_json::json!([]),
     )
+    .await
+    .unwrap();
+    let audit_id: i64 = sqlx::query_scalar("SELECT id FROM audit_log WHERE event_id = $1")
+        .bind(&audit_event.event_id)
+        .fetch_one(&mut *audit_insert_tx)
+        .await
+        .unwrap();
+    audit_insert_tx.commit().await.unwrap();
+
+    let direct_insert = sqlx::query(
+        "INSERT INTO audit_log
+            (chain_id, chain_version, sequence, event_id, case_id, actor_id,
+             occurred_at, event_kind, event_payload, provenance_refs,
+             previous_entry_hash, entry_hash)
+         VALUES ('mutations', 1, $1, 'mutations:999', $2, $3, now(),
+                 'direct.event', '{}'::jsonb, '[]'::jsonb, $4, $5)",
+    )
+    .bind(audit_event.sequence + 1)
     .bind(case.0)
     .bind(actor.0)
-    .bind(vec![1_u8, 2, 3])
-    .fetch_one(&mut *audit_insert_tx)
-    .await
-    .unwrap();
-    let audit_id: i64 = audit_row.get("id");
-    audit_insert_tx.commit().await.unwrap();
-    let audit_time: chrono::DateTime<Utc> = sqlx::query_scalar(
-        "SELECT occurred_at FROM audit_log WHERE id = $1",
-    )
-    .bind(audit_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    .bind(vec![0_u8; 32])
+    .bind(vec![0_u8; 32])
+    .execute(&pool)
+    .await;
+    assert!(
+        direct_insert.is_err(),
+        "direct inserts must not bypass the current chain tip"
+    );
+    let audit_time: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT occurred_at FROM audit_log WHERE id = $1")
+            .bind(audit_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(
         audit_time > Utc::now() - chrono::Duration::minutes(1),
         "audit timestamps must come from the database clock"
     );
 
     let mut audit_update_tx = pool.begin().await.unwrap();
-    let audit_update = sqlx::query(
-        "UPDATE audit_log SET event_kind = 'tampered.event' WHERE id = $1",
-    )
-    .bind(audit_id)
-    .execute(&mut *audit_update_tx)
-    .await;
+    let audit_update =
+        sqlx::query("UPDATE audit_log SET event_kind = 'tampered.event' WHERE id = $1")
+            .bind(audit_id)
+            .execute(&mut *audit_update_tx)
+            .await;
     assert!(audit_update.is_err(), "audit log events must be immutable");
     audit_update_tx.rollback().await.unwrap();
 
@@ -222,7 +242,10 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
         .bind(audit_id)
         .execute(&mut *audit_delete_tx)
         .await;
-    assert!(audit_delete.is_err(), "audit log events must not be deletable");
+    assert!(
+        audit_delete.is_err(),
+        "audit log events must not be deletable"
+    );
     audit_delete_tx.rollback().await.unwrap();
 
     let mut tx = pool.begin().await.unwrap();
@@ -266,28 +289,29 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     .bind(a1.0)
     .execute(&mut *payload_update_tx)
     .await;
-    assert!(payload_update.is_err(), "case graph payloads must be immutable");
+    assert!(
+        payload_update.is_err(),
+        "case graph payloads must be immutable"
+    );
     payload_update_tx.rollback().await.unwrap();
 
     let mut digest_insert_tx = pool.begin().await.unwrap();
-    let immutable_digest = repository::upsert_digest(
-        &mut digest_insert_tx,
-        "sha256",
-        &"bb".repeat(32),
-    )
-    .await
-    .unwrap();
+    let immutable_digest =
+        repository::upsert_digest(&mut digest_insert_tx, "sha256", &"bb".repeat(32))
+            .await
+            .unwrap();
     digest_insert_tx.commit().await.unwrap();
 
     let mut digest_update_tx = pool.begin().await.unwrap();
-    let digest_update = sqlx::query(
-        "UPDATE digests SET hex = $1 WHERE id = $2",
-    )
-    .bind("cc".repeat(32))
-    .bind(immutable_digest.0)
-    .execute(&mut *digest_update_tx)
-    .await;
-    assert!(digest_update.is_err(), "digest identities must be immutable");
+    let digest_update = sqlx::query("UPDATE digests SET hex = $1 WHERE id = $2")
+        .bind("cc".repeat(32))
+        .bind(immutable_digest.0)
+        .execute(&mut *digest_update_tx)
+        .await;
+    assert!(
+        digest_update.is_err(),
+        "digest identities must be immutable"
+    );
     digest_update_tx.rollback().await.unwrap();
 
     let mut provenance_insert_tx = pool.begin().await.unwrap();
@@ -361,9 +385,10 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     mismatched_payload_tx.rollback().await.unwrap();
 
     let mut invalid_derived_input_tx = pool.begin().await.unwrap();
-    let tool_version = repository::ensure_tool_version(&mut invalid_derived_input_tx, "graph-test", 1)
-        .await
-        .unwrap();
+    let tool_version =
+        repository::ensure_tool_version(&mut invalid_derived_input_tx, "graph-test", 1)
+            .await
+            .unwrap();
     sqlx::query(
         "INSERT INTO case_nodes (case_id, node_id, kind)
          VALUES ($1, 4, 'derived_fact'), ($1, 5, 'inference')",
@@ -404,13 +429,10 @@ async fn case_nodes_are_assigned_sequential_ids_starting_at_one() {
     invalid_derived_input_tx.rollback().await.unwrap();
 
     let mut oversized_derived_tx = pool.begin().await.unwrap();
-    let tool_version = repository::ensure_tool_version(
-        &mut oversized_derived_tx,
-        "graph-bound-test",
-        1,
-    )
-    .await
-    .unwrap();
+    let tool_version =
+        repository::ensure_tool_version(&mut oversized_derived_tx, "graph-bound-test", 1)
+            .await
+            .unwrap();
     sqlx::query(
         "INSERT INTO case_nodes (case_id, node_id, kind)
          VALUES ($1, 4, 'derived_fact')",
@@ -472,7 +494,11 @@ async fn concurrent_node_insertion_on_the_same_case_never_collides() {
         ids.push(handle.await.unwrap());
     }
     ids.sort_unstable();
-    assert_eq!(ids, (1..=16).collect::<Vec<_>>(), "expected no gap and no duplicate");
+    assert_eq!(
+        ids,
+        (1..=16).collect::<Vec<_>>(),
+        "expected no gap and no duplicate"
+    );
 }
 
 /// A rolled-back transaction must leave nothing behind: no case_nodes row
@@ -491,14 +517,20 @@ async fn aborted_transaction_leaves_no_partial_state() {
     tx.rollback().await.unwrap();
 
     let remaining = repository::list_case_node_ids(&pool, case).await.unwrap();
-    assert!(remaining.is_empty(), "rolled-back insert must not be visible");
+    assert!(
+        remaining.is_empty(),
+        "rolled-back insert must not be visible"
+    );
 
     let mut tx = pool.begin().await.unwrap();
     let node = repository::insert_user_assertion_node(&mut tx, case, actor, Utc::now(), true)
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    assert_eq!(node.0, 1, "the aborted attempt's id must not have been consumed");
+    assert_eq!(
+        node.0, 1,
+        "the aborted attempt's id must not have been consumed"
+    );
 }
 
 #[tokio::test]
@@ -532,9 +564,10 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     )
     .await
     .unwrap();
-    let artifact = repository::insert_artifact_node(&mut tx, case, digest, 1024, ingestion, provenance)
-        .await
-        .unwrap();
+    let artifact =
+        repository::insert_artifact_node(&mut tx, case, digest, 1024, ingestion, provenance)
+            .await
+            .unwrap();
 
     let tool_version = repository::ensure_tool_version(&mut tx, "nexo-extractor-plaintext", 1)
         .await
@@ -555,12 +588,11 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     assert_eq!(observation.0, 2);
 
     let mut ingestion_update_tx = pool.begin().await.unwrap();
-    let ingestion_update = sqlx::query(
-        "UPDATE ingestion_records SET byte_size = 2048 WHERE id = $1",
-    )
-    .bind(ingestion.0)
-    .execute(&mut *ingestion_update_tx)
-    .await;
+    let ingestion_update =
+        sqlx::query("UPDATE ingestion_records SET byte_size = 2048 WHERE id = $1")
+            .bind(ingestion.0)
+            .execute(&mut *ingestion_update_tx)
+            .await;
     assert!(
         ingestion_update.is_err(),
         "bound ingestion identity must be immutable"
@@ -568,12 +600,10 @@ async fn artifact_and_observation_nodes_round_trip_with_reference_integrity() {
     ingestion_update_tx.rollback().await.unwrap();
 
     let mut tool_version_update_tx = pool.begin().await.unwrap();
-    let tool_version_update = sqlx::query(
-        "UPDATE tool_versions SET version = 2 WHERE id = $1",
-    )
-    .bind(tool_version.0)
-    .execute(&mut *tool_version_update_tx)
-    .await;
+    let tool_version_update = sqlx::query("UPDATE tool_versions SET version = 2 WHERE id = $1")
+        .bind(tool_version.0)
+        .execute(&mut *tool_version_update_tx)
+        .await;
     assert!(
         tool_version_update.is_err(),
         "tool version identity must be immutable"
@@ -639,7 +669,13 @@ async fn observation_cannot_reference_an_artifact_from_another_case() {
     .await
     .unwrap();
     let ingestion = repository::insert_ingestion_record(
-        &mut tx, case_a, Utc::now(), None, None, 10, "accepted",
+        &mut tx,
+        case_a,
+        Utc::now(),
+        None,
+        None,
+        10,
+        "accepted",
     )
     .await
     .unwrap();
@@ -668,7 +704,10 @@ async fn observation_cannot_reference_an_artifact_from_another_case() {
         Utc::now(),
     )
     .await;
-    assert!(result.is_err(), "cross-case artifact reference must be rejected");
+    assert!(
+        result.is_err(),
+        "cross-case artifact reference must be rejected"
+    );
 }
 
 #[tokio::test]
@@ -683,7 +722,12 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         .await
         .unwrap();
     let provenance = repository::insert_provenance(
-        &mut tx, case, "imported_bundle", Some(actor), Utc::now(), json!({}),
+        &mut tx,
+        case,
+        "imported_bundle",
+        Some(actor),
+        Utc::now(),
+        json!({}),
     )
     .await
     .unwrap();
@@ -1014,13 +1058,10 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     unactivated_evaluation_tx.rollback().await.unwrap();
 
     let mut mismatched_source_tx = pool.begin().await.unwrap();
-    let other_digest = repository::upsert_digest(
-        &mut mismatched_source_tx,
-        "sha256",
-        &"44".repeat(32),
-    )
-    .await
-    .unwrap();
+    let other_digest =
+        repository::upsert_digest(&mut mismatched_source_tx, "sha256", &"44".repeat(32))
+            .await
+            .unwrap();
     let mismatched_source = repository::insert_normative_source(
         &mut mismatched_source_tx,
         "primary_official",
@@ -1040,13 +1081,10 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     mismatched_source_tx.rollback().await.unwrap();
 
     let mut mismatched_bundle_tx = pool.begin().await.unwrap();
-    let other_digest = repository::upsert_digest(
-        &mut mismatched_bundle_tx,
-        "sha256",
-        &"55".repeat(32),
-    )
-    .await
-    .unwrap();
+    let other_digest =
+        repository::upsert_digest(&mut mismatched_bundle_tx, "sha256", &"55".repeat(32))
+            .await
+            .unwrap();
     let mismatched_bundle = repository::insert_policy_bundle(
         &mut mismatched_bundle_tx,
         "AR",
@@ -1158,13 +1196,12 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         .await
         .unwrap();
     next_policy_tx.commit().await.unwrap();
-    let policy_preparation_status: String = sqlx::query_scalar(
-        "SELECT status::text FROM preparations WHERE id = $1",
-    )
-    .bind(policy_preparation)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let policy_preparation_status: String =
+        sqlx::query_scalar("SELECT status::text FROM preparations WHERE id = $1")
+            .bind(policy_preparation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(policy_preparation_status, "invalidated");
 
     let mut claim_jurisdiction_mismatch_tx = pool.begin().await.unwrap();
@@ -1266,12 +1303,11 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     activation_update_tx.rollback().await.unwrap();
 
     let mut activation_delete_tx = pool.begin().await.unwrap();
-    let activation_delete = sqlx::query(
-        "DELETE FROM policy_bundle_activations WHERE policy_bundle_id = $1",
-    )
-    .bind(bundle.0)
-    .execute(&mut *activation_delete_tx)
-    .await;
+    let activation_delete =
+        sqlx::query("DELETE FROM policy_bundle_activations WHERE policy_bundle_id = $1")
+            .bind(bundle.0)
+            .execute(&mut *activation_delete_tx)
+            .await;
     assert!(
         activation_delete.is_err(),
         "policy bundle activations must not be deletable"
@@ -1295,12 +1331,11 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     activation_duplicate_tx.rollback().await.unwrap();
 
     let mut activated_route_update_tx = pool.begin().await.unwrap();
-    let activated_route_update = sqlx::query(
-        "UPDATE action_routes SET title = 'tampered route' WHERE id = $1",
-    )
-    .bind(route.0)
-    .execute(&mut *activated_route_update_tx)
-    .await;
+    let activated_route_update =
+        sqlx::query("UPDATE action_routes SET title = 'tampered route' WHERE id = $1")
+            .bind(route.0)
+            .execute(&mut *activated_route_update_tx)
+            .await;
     assert!(
         activated_route_update.is_err(),
         "a route in an activated policy bundle must be immutable"
@@ -1308,12 +1343,11 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     activated_route_update_tx.rollback().await.unwrap();
 
     let mut activated_claim_update_tx = pool.begin().await.unwrap();
-    let activated_claim_update = sqlx::query(
-        "UPDATE normative_claims SET proposition = 'tampered claim' WHERE id = $1",
-    )
-    .bind(claim.0)
-    .execute(&mut *activated_claim_update_tx)
-    .await;
+    let activated_claim_update =
+        sqlx::query("UPDATE normative_claims SET proposition = 'tampered claim' WHERE id = $1")
+            .bind(claim.0)
+            .execute(&mut *activated_claim_update_tx)
+            .await;
     assert!(
         activated_claim_update.is_err(),
         "a claim in an activated policy bundle must be immutable"
@@ -1347,7 +1381,10 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         activated_route_requirement_insert.is_err(),
         "requirements cannot be added to an activated route"
     );
-    activated_route_requirement_insert_tx.rollback().await.unwrap();
+    activated_route_requirement_insert_tx
+        .rollback()
+        .await
+        .unwrap();
 
     let mut activated_route_requirement_update_tx = pool.begin().await.unwrap();
     let activated_route_requirement_update = sqlx::query(
@@ -1362,20 +1399,25 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         activated_route_requirement_update.is_err(),
         "requirements of an activated route must be immutable"
     );
-    activated_route_requirement_update_tx.rollback().await.unwrap();
+    activated_route_requirement_update_tx
+        .rollback()
+        .await
+        .unwrap();
 
     let mut activated_route_requirement_delete_tx = pool.begin().await.unwrap();
-    let activated_route_requirement_delete = sqlx::query(
-        "DELETE FROM action_route_requirements WHERE route_id = $1",
-    )
-    .bind(route.0)
-    .execute(&mut *activated_route_requirement_delete_tx)
-    .await;
+    let activated_route_requirement_delete =
+        sqlx::query("DELETE FROM action_route_requirements WHERE route_id = $1")
+            .bind(route.0)
+            .execute(&mut *activated_route_requirement_delete_tx)
+            .await;
     assert!(
         activated_route_requirement_delete.is_err(),
         "requirements of an activated route cannot be deleted"
     );
-    activated_route_requirement_delete_tx.rollback().await.unwrap();
+    activated_route_requirement_delete_tx
+        .rollback()
+        .await
+        .unwrap();
 
     let mut activated_source_update_tx = pool.begin().await.unwrap();
     let activated_source_update = sqlx::query(
@@ -1435,12 +1477,8 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     evaluation_delete_tx.rollback().await.unwrap();
 
     let mut wrong_algorithm_tx = pool.begin().await.unwrap();
-    let wrong_algorithm_digest = repository::upsert_digest(
-        &mut wrong_algorithm_tx,
-        "md5",
-        "not-a-sha256-digest",
-    )
-    .await;
+    let wrong_algorithm_digest =
+        repository::upsert_digest(&mut wrong_algorithm_tx, "md5", "not-a-sha256-digest").await;
     assert!(
         wrong_algorithm_digest.is_err(),
         "digest rows must use the canonical sha256 algorithm"
@@ -1448,12 +1486,8 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     wrong_algorithm_tx.rollback().await.unwrap();
 
     let mut malformed_digest_tx = pool.begin().await.unwrap();
-    let malformed_sha256 = repository::upsert_digest(
-        &mut malformed_digest_tx,
-        "sha256",
-        "not-a-sha256-digest",
-    )
-    .await;
+    let malformed_sha256 =
+        repository::upsert_digest(&mut malformed_digest_tx, "sha256", "not-a-sha256-digest").await;
     assert!(
         malformed_sha256.is_err(),
         "sha256 digest rows must contain exactly 64 lowercase hex characters"
@@ -1544,13 +1578,12 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     assert!(receipt.0 > 0);
 
     let mut receipt_update_tx = pool.begin().await.unwrap();
-    let receipt_update = sqlx::query(
-        "UPDATE evaluation_receipts SET action_digest_id = $1 WHERE id = $2",
-    )
-    .bind(result_digest.0)
-    .bind(receipt.0)
-    .execute(&mut *receipt_update_tx)
-    .await;
+    let receipt_update =
+        sqlx::query("UPDATE evaluation_receipts SET action_digest_id = $1 WHERE id = $2")
+            .bind(result_digest.0)
+            .bind(receipt.0)
+            .execute(&mut *receipt_update_tx)
+            .await;
     assert!(
         receipt_update.is_err(),
         "receipt binding evidence must be immutable"
@@ -1572,7 +1605,9 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
     );
     evaluation_update_tx.rollback().await.unwrap();
 
-    let listed = repository::list_evaluations_for_case(&pool, case).await.unwrap();
+    let listed = repository::list_evaluations_for_case(&pool, case)
+        .await
+        .unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, evaluation.0);
     assert_eq!(listed[0].result_kind, "actionable");
@@ -1595,7 +1630,10 @@ async fn action_evaluation_round_trips_including_sealed_json_payload() {
         "0.1.0",
     )
     .await;
-    assert!(mismatched.is_err(), "receipt must bind to the evaluation case");
+    assert!(
+        mismatched.is_err(),
+        "receipt must bind to the evaluation case"
+    );
     mismatched_tx.rollback().await.unwrap();
 
     let mut non_actionable_tx = pool.begin().await.unwrap();
@@ -1664,5 +1702,8 @@ async fn concurrent_upsert_of_the_same_digest_never_fails() {
     for handle in handles {
         ids.push(handle.await.unwrap());
     }
-    assert!(ids.iter().all(|id| *id == ids[0]), "all concurrent upserts must resolve to the same row");
+    assert!(
+        ids.iter().all(|id| *id == ids[0]),
+        "all concurrent upserts must resolve to the same row"
+    );
 }

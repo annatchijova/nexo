@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Applies crates/nexo-app/migrations/0001_init.sql to a disposable PostgreSQL
+# Applies the versioned NEXO schema migrations to a disposable PostgreSQL
 # instance and asserts the invariants docs/APPLICATION_LAYER_CONTRACT.md
 # claims for it: a full happy-path case-to-preparation flow commits, and
 # four specific violations are rejected by the schema itself (not by
@@ -43,6 +43,7 @@ psql_q() {
 
 echo "== applying migration =="
 psql_q -f "$(dirname "$0")/../crates/nexo-app/migrations/0001_init.sql"
+psql_q -f "$(dirname "$0")/../crates/nexo-app/migrations/0002_audit_chain_v1.sql"
 
 echo "== happy path: case -> artifact -> observation -> bundle -> claim -> route -> evaluation -> preparation =="
 psql_q <<'SQL'

@@ -1086,6 +1086,50 @@ async fn download_report_in_markdown_and_html_names_the_real_citation() {
     assert!(md.contains("Ley 25.326"));
     assert!(md.contains("Actionable"));
 
+    // PDF — real bytes, downloadable, hash recoverable from the raw file
+    // without a PDF parser (embedded as plain-text metadata).
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=pdf"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("content-type").unwrap(), "application/pdf");
+    assert!(response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains(".pdf"));
+    let pdf_bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(pdf_bytes.starts_with(b"%PDF-"));
+    assert!(pdf_bytes.len() > 500);
+    // The actual digest *value* (not the "result_sha256" label, which
+    // lands inside a PDF string object pdfinfo/pdftotext parse correctly
+    // but a raw byte search does not, per PDF's own string encoding) must
+    // still be recoverable straight from the file bytes — this is what a
+    // reader without a PDF library, e.g. `grep`, can actually verify.
+    let result_sha256 = md
+        .lines()
+        .find(|line| line.contains("result_sha256 (deterministic)"))
+        .and_then(|line| line.rsplit(' ').next())
+        .expect("markdown chain-of-custody line names the digest");
+    let pdf_text = String::from_utf8_lossy(&pdf_bytes);
+    assert!(
+        pdf_text.contains(result_sha256),
+        "the digest value itself must be recoverable from the PDF's own bytes"
+    );
+
     // HTML — a different actor must not be able to download it.
     let other_token = new_owner_token(&state.pool, "report-other").await;
     let response = app

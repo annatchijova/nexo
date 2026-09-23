@@ -237,7 +237,7 @@ equality afterward — never by reading a value out of the id.
 
 ## Report downloads
 
-`GET /v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=md|html`
+`GET /v1/cases/{case_id}/evaluations/{evaluation_id}/report?format=md|html|pdf`
 (default `html`) downloads a human-readable report over one already-recorded
 evaluation — `Content-Disposition: attachment`, so a browser saves it
 directly. Implemented in `crates/nexo-report`, whose design (not code) is
@@ -255,10 +255,29 @@ recomputable by re-fetching `GET .../evaluations` and hashing) and
 the same sealed evaluation stay distinguishable without implying the
 *evaluation* changed).
 
-PDF is not implemented this round — recorded as a real gap, not silently
-dropped: `render_markdown`/`render_html` are the two working formats;
-adding `render_pdf` (ZAYNOR uses `reportlab`; the pure-Rust equivalent
-would be `printpdf`, evaluated but not yet integrated) is next.
+**PDF** (`?format=pdf`) renders through `printpdf`'s HTML-to-PDF mode —
+the pure-Rust sibling of ZAYNOR's `reportlab` choice, no external binary or
+headless browser — feeding it the exact same markup `render_html` produces,
+so all three formats can never structurally drift from each other; only
+page setup and PDF-specific metadata are PDF-only code. Gated behind the
+`pdf` Cargo feature (`nexo-api` enables it; a build that omits it returns
+`501 Not Implemented` rather than failing to compile or panicking),
+mirroring ZAYNOR's own optional `[report]` extra for `reportlab` — the
+dependency tree (font shaping, layout) has no reason to be mandatory for
+every consumer of `nexo-report`.
+
+The hash is embedded twice in a PDF, not once: as visible text (the same
+chain-of-custody block every format carries, plus a footer line printpdf
+repeats on every page) and in the PDF's own document metadata (`Subject`,
+`Keywords`, `Identifier`) — verified with `pdfinfo`/`pdftotext` against a
+real generated file, not just asserted. One nuance worth recording: the
+metadata *label* ("result_sha256") is only recoverable by a real PDF parser
+(the value sits inside an encoded PDF string object) — a plain `grep` on
+the raw file bytes will not find that literal word. The *digest value*
+itself, however, does appear as plain ASCII in the raw bytes (confirmed by
+byte search against a real generated PDF), which is what
+`nexo-api/tests/api_test.rs`'s PDF test actually asserts, rather than
+overclaiming what a naive byte search can recover.
 
 **A real bug found and fixed while adding this feature, not before:**
 `nexo-app::upsert_digest` used `INSERT ... ON CONFLICT (algorithm, hex) DO
@@ -284,4 +303,3 @@ of byte-identical content, all resolving to the same row, none failing).
 
 - A generic multi-bundle import/selection surface.
 - The web UI (Step 6).
-- PDF reports (see "Report downloads" above).

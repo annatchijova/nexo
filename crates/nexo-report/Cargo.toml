@@ -1,13 +1,26 @@
 [package]
 name = "nexo-report"
-description = "Human-readable (Markdown/HTML) reports over an already-rendered, sealed NEXO evaluation. Never computes a new decision. Design adapted from Anna Tchijova's zaynor/src/zaynor/report.py (Apache-2.0), not copied: NEXO's sealed shape (nexo-core ActionEvaluation, no per-finding MITRE/agent fields) differs from ZAYNOR's ZaynorAuthoritativeResult."
+description = "Human-readable (Markdown/HTML/PDF) reports over an already-rendered, sealed NEXO evaluation. Never computes a new decision. Design adapted from Anna Tchijova's zaynor/src/zaynor/report.py (Apache-2.0), not copied: NEXO's sealed shape (nexo-core ActionEvaluation, no per-finding MITRE/agent fields) differs from ZAYNOR's ZaynorAuthoritativeResult."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+# Mirrors zaynor's own optional `[report]` extra for reportlab: PDF pulls
+# in a real dependency tree (image codecs, font shaping) the rest of this
+# workspace has no reason to carry by default. render_pdf is compiled out
+# entirely without this feature, and returns a typed, actionable error
+# rather than panicking if called through a build that lacks it.
+pdf = ["dep:printpdf"]
+
 [dependencies]
 chrono = "0.4.45"
 serde_json = "1.0.151"
 nexo-integrity = { path = "../nexo-integrity" }
+printpdf = { version = "0.12.8", optional = true, default-features = false, features = ["html"] }
+
+[[example]]
+name = "dump_pdf"
+required-features = ["pdf"]

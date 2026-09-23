@@ -348,6 +348,71 @@ report_hash (timestamped)    : {report_hash}</div>
     )
 }
 
+#[derive(Debug)]
+pub enum PdfError {
+    /// This build was compiled without the `pdf` feature. Mirrors ZAYNOR's
+    /// own `ReportError` for a missing `reportlab` install: a typed,
+    /// actionable error, never a panic, and never a silent fallback to a
+    /// different format.
+    FeatureDisabled,
+    /// `printpdf` itself rejected the rendered HTML.
+    Render(String),
+}
+
+/// Renders the same HTML `render_html` produces into a PDF, via
+/// `printpdf`'s HTML-to-PDF mode (feature `pdf`) — the pure-Rust sibling of
+/// ZAYNOR's `reportlab` choice: no external binary, no headless browser.
+/// Reusing `render_html`'s markup means the PDF, HTML, and Markdown
+/// renderers can never structurally drift from each other; only this
+/// function's page setup and PDF-specific metadata are new.
+///
+/// The result's `result_sha256` is embedded twice, not once: as visible
+/// text (the same chain-of-custody block every format carries, plus a
+/// footer line printpdf repeats on every page) and in the PDF's own
+/// document metadata (`subject`, `keywords`, `identifier`) — a tool like
+/// `exiftool`/`pdfinfo` can recover the seal without opening the document
+/// at all, the same property a reader gets from `zaynor audit` re-hashing
+/// ZAYNOR's sealed result.
+#[cfg(feature = "pdf")]
+pub fn render_pdf(input: &ReportInput<'_>) -> Result<Vec<u8>, PdfError> {
+    use std::collections::BTreeMap;
+
+    let html = render_html(input);
+    let images = BTreeMap::new();
+    let fonts = BTreeMap::new();
+    let options = printpdf::GeneratePdfOptions {
+        show_page_numbers: Some(true),
+        footer_text: Some(format!(
+            "NEXO sealed report -- result_sha256 {} -- recompute via GET /v1/cases/{{id}}/evaluations",
+            input.result_sha256
+        )),
+        ..Default::default()
+    };
+    let mut warnings = Vec::new();
+    let mut doc = printpdf::PdfDocument::from_html(&html, &images, &fonts, &options, &mut warnings)
+        .map_err(PdfError::Render)?;
+
+    doc.metadata.info.document_title = format!("NEXO Case Report — case {}", input.case_id);
+    doc.metadata.info.author = "NEXO".to_string();
+    doc.metadata.info.producer = "nexo-report".to_string();
+    doc.metadata.info.subject = format!("result_sha256:{}", input.result_sha256);
+    doc.metadata.info.identifier = input.result_sha256.to_string();
+    doc.metadata.info.keywords = vec![
+        "NEXO".to_string(),
+        "case-report".to_string(),
+        format!("result_sha256:{}", input.result_sha256),
+    ];
+
+    let save_options = printpdf::PdfSaveOptions::default();
+    let mut save_warnings = Vec::new();
+    Ok(doc.save(&save_options, &mut save_warnings))
+}
+
+#[cfg(not(feature = "pdf"))]
+pub fn render_pdf(_input: &ReportInput<'_>) -> Result<Vec<u8>, PdfError> {
+    Err(PdfError::FeatureDisabled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,5 +507,43 @@ mod tests {
         let early_report_hash_line = early_md.lines().find(|l| l.contains("report_hash")).unwrap();
         let late_report_hash_line = late_md.lines().find(|l| l.contains("report_hash")).unwrap();
         assert_ne!(early_report_hash_line, late_report_hash_line);
+    }
+
+    #[cfg(not(feature = "pdf"))]
+    #[test]
+    fn render_pdf_without_the_feature_is_a_typed_error_not_a_panic() {
+        let result = sample_actionable();
+        let outcome = render_pdf(&input(&result, "abc123"));
+        assert!(matches!(outcome, Err(PdfError::FeatureDisabled)));
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn render_pdf_produces_a_real_pdf_carrying_the_hash_in_body_and_metadata() {
+        let result = sample_actionable();
+        let report_input = input(&result, "abc123def456");
+        let bytes = render_pdf(&report_input).expect("pdf render must succeed for well-formed input");
+
+        // A real PDF, not an empty or malformed stub.
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(bytes.len() > 500, "PDF should contain real rendered content, got {} bytes", bytes.len());
+
+        // The hash must be recoverable from the file bytes without a PDF
+        // parser: it is embedded as plain metadata text (subject/keywords/
+        // identifier), not only inside a compressed content stream.
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            text.contains("abc123def456"),
+            "result_sha256 must appear in the PDF's own bytes (metadata), not only in its rendered page content"
+        );
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn render_pdf_handles_a_non_actionable_result_without_crashing() {
+        let result = sample_insufficient();
+        let report_input = input(&result, "def456");
+        let bytes = render_pdf(&report_input).expect("pdf render must succeed for a non-actionable result too");
+        assert!(bytes.starts_with(b"%PDF-"));
     }
 }

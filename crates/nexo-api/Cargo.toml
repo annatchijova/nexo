@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 nexo-core = { path = "../nexo-core" }
 nexo-app = { path = "../nexo-app" }
-nexo-report = { path = "../nexo-report" }
+nexo-report = { path = "../nexo-report", features = ["pdf"] }
 nexo-integrity = { path = "../nexo-integrity" }
 nexo-sandbox = { path = "../nexo-sandbox" }
 nexo-extraction = { path = "../nexo-extraction" }

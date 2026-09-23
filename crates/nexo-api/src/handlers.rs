@@ -713,21 +713,31 @@ pub async fn download_report(
     };
 
     let format = query.format.as_deref().unwrap_or("html");
-    let (content_type, body, extension) = match format {
+    let (content_type, body, extension): (&str, Vec<u8>, &str) = match format {
         "md" | "markdown" => (
             "text/markdown; charset=utf-8",
-            nexo_report::render_markdown(&input),
+            nexo_report::render_markdown(&input).into_bytes(),
             "md",
         ),
         "html" => (
             "text/html; charset=utf-8",
-            nexo_report::render_html(&input),
+            nexo_report::render_html(&input).into_bytes(),
             "html",
         ),
+        "pdf" => {
+            let bytes = nexo_report::render_pdf(&input).map_err(|error| match error {
+                nexo_report::PdfError::FeatureDisabled => (
+                    StatusCode::NOT_IMPLEMENTED,
+                    "this deployment was built without PDF report support",
+                ),
+                nexo_report::PdfError::Render(_) => internal("could not render PDF")(error),
+            })?;
+            ("application/pdf", bytes, "pdf")
+        }
         _ => {
             return Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "unknown report format (expected md or html)",
+                "unknown report format (expected md, html, or pdf)",
             ))
         }
     };

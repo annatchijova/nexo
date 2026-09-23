@@ -30,6 +30,18 @@ NEXO_ENV_FILE="/etc/nexo/nexo-api.env"
 PG_DB="nexo"
 PG_ROLE="nexo"
 
+echo "== swap (a 2 GiB-class instance like t3.small OOM-kills rustc partway"
+echo "   through the workspace build otherwise -- confirmed by actually"
+echo "   provisioning on one; nexo-report alone pulls in a PDF-rendering"
+echo "   stack heavy enough to need this) =="
+if [ ! -f /swapfile ]; then
+  fallocate -l 4G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 echo "== packages =="
 dnf install -y docker postgresql16-server postgresql16 gcc gcc-c++ make \
   pkgconfig openssl-devel git tar

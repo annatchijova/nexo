@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use hmac::{Hmac, Mac};
 use sha2::{Digest as _, Sha256};
 
 pub const CANONICAL_VERSION: u8 = 1;
@@ -249,6 +250,196 @@ pub fn audit_digest_v1(
     );
     fields.insert("sequence".into(), CanonicalValue::U64(sequence));
     seal(&CanonicalValue::Map(fields))
+}
+
+/// Versioned digest for the authenticated `audit_chain/v2` format.
+/// Authentication is intentionally separate: this digest remains useful to
+/// verifiers that do not possess the HMAC key, while the HMAC binds the same
+/// record plus the authentication metadata.
+pub fn audit_digest_v2(
+    chain_id: &str,
+    chain_version: u64,
+    sequence: u64,
+    event: &CanonicalValue,
+    previous: Sha256Digest,
+) -> Sha256Digest {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "format".into(),
+        CanonicalValue::Text("audit-chain-v2".into()),
+    );
+    fields.insert("chain_id".into(), CanonicalValue::Text(chain_id.into()));
+    fields.insert("chain_version".into(), CanonicalValue::U64(chain_version));
+    fields.insert("event".into(), event.clone());
+    fields.insert(
+        "previous".into(),
+        CanonicalValue::Bytes(previous.0.to_vec()),
+    );
+    fields.insert("sequence".into(), CanonicalValue::U64(sequence));
+    seal(&CanonicalValue::Map(fields))
+}
+
+/// HMAC for the authenticated audit record. The complete canonical event,
+/// chain link, structural digest, authentication scheme, and key version are
+/// bound together. The key is supplied by the caller and is never serialized.
+#[allow(clippy::too_many_arguments)]
+pub fn audit_hmac_v1(
+    key: &[u8],
+    key_version: &str,
+    chain_id: &str,
+    chain_version: u64,
+    sequence: u64,
+    event: &CanonicalValue,
+    previous: Sha256Digest,
+    entry_digest: Sha256Digest,
+) -> Sha256Digest {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "format".into(),
+        CanonicalValue::Text("audit-hmac-v1".into()),
+    );
+    fields.insert(
+        "auth_scheme".into(),
+        CanonicalValue::Text("hmac-sha256".into()),
+    );
+    fields.insert(
+        "key_version".into(),
+        CanonicalValue::Text(key_version.into()),
+    );
+    fields.insert("chain_id".into(), CanonicalValue::Text(chain_id.into()));
+    fields.insert("chain_version".into(), CanonicalValue::U64(chain_version));
+    fields.insert("sequence".into(), CanonicalValue::U64(sequence));
+    fields.insert("event".into(), event.clone());
+    fields.insert(
+        "previous".into(),
+        CanonicalValue::Bytes(previous.0.to_vec()),
+    );
+    fields.insert(
+        "entry_digest".into(),
+        CanonicalValue::Bytes(entry_digest.0.to_vec()),
+    );
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts arbitrary key length");
+    mac.update(&canonical_bytes(&CanonicalValue::Map(fields)));
+    Sha256Digest::from_bytes(mac.finalize().into_bytes().into())
+}
+
+pub fn audit_checkpoint_hmac_v1(
+    key: &[u8],
+    key_version: &str,
+    chain_id: &str,
+    chain_version: u64,
+    at_sequence: u64,
+    tip_digest: Sha256Digest,
+    entry_count: u64,
+) -> Sha256Digest {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "format".into(),
+        CanonicalValue::Text("audit-checkpoint-hmac-v1".into()),
+    );
+    fields.insert(
+        "auth_scheme".into(),
+        CanonicalValue::Text("hmac-sha256".into()),
+    );
+    fields.insert(
+        "key_version".into(),
+        CanonicalValue::Text(key_version.into()),
+    );
+    fields.insert("chain_id".into(), CanonicalValue::Text(chain_id.into()));
+    fields.insert("chain_version".into(), CanonicalValue::U64(chain_version));
+    fields.insert("at_sequence".into(), CanonicalValue::U64(at_sequence));
+    fields.insert("entry_count".into(), CanonicalValue::U64(entry_count));
+    fields.insert(
+        "tip_digest".into(),
+        CanonicalValue::Bytes(tip_digest.0.to_vec()),
+    );
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts arbitrary key length");
+    mac.update(&canonical_bytes(&CanonicalValue::Map(fields)));
+    Sha256Digest::from_bytes(mac.finalize().into_bytes().into())
+}
+
+/// In-memory HMAC keyring. Key material is deliberately not serializable and
+/// its Debug representation is redacted. The current key is selected for new
+/// records; previous keys remain available only for verification during
+/// rotation.
+pub struct AuditHmacKeyring {
+    current_version: String,
+    keys: BTreeMap<String, Vec<u8>>,
+}
+
+impl fmt::Debug for AuditHmacKeyring {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuditHmacKeyring")
+            .field("current_version", &self.current_version)
+            .field("key_versions", &self.keys.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl AuditHmacKeyring {
+    pub fn from_environment() -> Result<Self, String> {
+        let current_key = std::env::var("NEXO_AUDIT_HMAC_KEY")
+            .map_err(|_| "NEXO_AUDIT_HMAC_KEY is required for audit_chain/v2".to_string())?;
+        let current_version = std::env::var("NEXO_AUDIT_HMAC_KEY_VERSION").map_err(|_| {
+            "NEXO_AUDIT_HMAC_KEY_VERSION is required for audit_chain/v2".to_string()
+        })?;
+        Self::from_parts(
+            &current_version,
+            current_key.as_bytes(),
+            &std::env::var("NEXO_AUDIT_HMAC_PREVIOUS_KEYS").unwrap_or_default(),
+        )
+    }
+
+    pub fn from_parts(
+        current_version: &str,
+        current_key: &[u8],
+        previous_keys: &str,
+    ) -> Result<Self, String> {
+        validate_key_version(current_version)?;
+        validate_key(current_key, current_version)?;
+        let mut keys = BTreeMap::new();
+        keys.insert(current_version.to_string(), current_key.to_vec());
+        for item in previous_keys.split(';').filter(|item| !item.is_empty()) {
+            let (version, key) = item
+                .split_once('=')
+                .ok_or_else(|| "previous HMAC keys use version=key; syntax".to_string())?;
+            validate_key_version(version)?;
+            validate_key(key.as_bytes(), version)?;
+            if keys
+                .insert(version.to_string(), key.as_bytes().to_vec())
+                .is_some()
+            {
+                return Err(format!("duplicate HMAC key version {version}"));
+            }
+        }
+        Ok(Self {
+            current_version: current_version.to_string(),
+            keys,
+        })
+    }
+
+    pub fn current_version(&self) -> &str {
+        &self.current_version
+    }
+
+    pub fn key(&self, version: &str) -> Option<&[u8]> {
+        self.keys.get(version).map(Vec::as_slice)
+    }
+}
+
+fn validate_key_version(version: &str) -> Result<(), String> {
+    if version.is_empty() || version.contains(['=', ';', '\n', '\r']) {
+        return Err("HMAC key version is empty or contains a separator".to_string());
+    }
+    Ok(())
+}
+
+fn validate_key(key: &[u8], version: &str) -> Result<(), String> {
+    if key.len() < 32 {
+        return Err(format!("HMAC key {version} must contain at least 32 bytes"));
+    }
+    Ok(())
 }
 
 fn length(value: usize, out: &mut Vec<u8>) {

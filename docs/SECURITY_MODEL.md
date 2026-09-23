@@ -2,7 +2,7 @@
 
 ## Threat model
 
-An attacker can submit hostile files, malformed metadata, misleading declarations, stale or adversarial URLs, and replay requests. An attacker may obtain application-level write access but not the configured HMAC key or an independently retained chain-tip anchor.
+An attacker can submit hostile files, malformed metadata, misleading declarations, stale or adversarial URLs, and replay requests. An attacker may obtain PostgreSQL write access but not the application deployment's configured HMAC keyring. This version does not claim protection when application, runtime environment, and HMAC secret are compromised together.
 
 An attacker cannot turn a hash into proof that content is true, or use a plain SHA-256 chain alone as protection against an attacker able to recompute the entire database history.
 
@@ -27,4 +27,4 @@ An attacker cannot turn a hash into proof that content is true, or use a plain S
 
 SHA-256 establishes byte identity for a declared payload. It does not establish origin, truth, admissibility, legal validity, or explanatory quality.
 
-Hash chains are reserved for append-only event history where detecting retrospective alteration matters. If that threat includes a database writer who can recompute the chain, NEXO must use a key-bound HMAC and retain the expected tip outside the writer's authority.
+Hash chains are reserved for append-only event history where detecting retrospective alteration matters. `audit_chain/v2` adds mandatory key-bound HMAC for a PostgreSQL-only writer threat. Independent checkpoint retention and external anchoring remain a later authority-bearing phase.

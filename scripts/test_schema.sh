@@ -9,6 +9,11 @@
 # torn down on exit regardless of pass/fail.
 set -euo pipefail
 
+if [ -z "${NEXO_AUDIT_HMAC_KEY:-}" ]; then
+  export NEXO_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
+fi
+export NEXO_AUDIT_HMAC_KEY_VERSION="${NEXO_AUDIT_HMAC_KEY_VERSION:-v1}"
+
 CONTAINER_NAME="nexo-pg-schema-test"
 PORT=55433
 DB=nexo_schema_test
@@ -44,6 +49,7 @@ psql_q() {
 echo "== applying migration =="
 psql_q -f "$(dirname "$0")/../crates/nexo-app/migrations/0001_init.sql"
 psql_q -f "$(dirname "$0")/../crates/nexo-app/migrations/0002_audit_chain_v1.sql"
+psql_q -f "$(dirname "$0")/../crates/nexo-app/migrations/0003_audit_chain_v2_hmac.sql"
 
 echo "== happy path: case -> artifact -> observation -> bundle -> claim -> route -> evaluation -> preparation =="
 psql_q <<'SQL'

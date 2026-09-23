@@ -31,6 +31,8 @@ fi
 
 export DATABASE_URL="postgres://postgres:nexo@127.0.0.1:${PORT}/${DB}"
 : "${NEXO_BOOTSTRAP_OWNER:?NEXO_BOOTSTRAP_OWNER must be set; it is never printed by this script}"
+: "${NEXO_AUDIT_HMAC_KEY:?NEXO_AUDIT_HMAC_KEY must be supplied by the deployment secret manager}"
+: "${NEXO_AUDIT_HMAC_KEY_VERSION:?NEXO_AUDIT_HMAC_KEY_VERSION must be supplied by the deployment configuration}"
 export NEXO_OBJECT_STORE_ROOT="${NEXO_OBJECT_STORE_ROOT:-./.dev-data/objects}"
 export NEXO_BIND_ADDR="${NEXO_BIND_ADDR:-127.0.0.1:8080}"
 export RUST_LOG="${RUST_LOG:-nexo_api=debug,tower_http=debug}"

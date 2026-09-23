@@ -121,7 +121,23 @@ pub async fn apply_migration(pool: &Pool) -> Result<(), RepoError> {
             .execute(&mut *tx)
             .await?;
     }
+    let audit_chain_hmac_applied = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (
+             SELECT 1 FROM nexo_schema_migrations
+             WHERE version = '0003_audit_chain_v2_hmac'
+         )",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if !audit_chain_hmac_applied {
+        sqlx::raw_sql(crate::AUDIT_CHAIN_HMAC_MIGRATION)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
+    crate::audit::rotate_key_version(pool)
+        .await
+        .map_err(RepoError::from)?;
     Ok(())
 }
 

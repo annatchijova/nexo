@@ -1,4 +1,9 @@
-# Audit chain v1 contract
+# Audit chain v1 contract (legacy)
+
+This document describes the unauthenticated v1 format retained only for
+historical reference. New deployments use the authenticated v2 contract in
+`docs/AUDIT_CHAIN_V2_HMAC_CONTRACT.md`; v1 rows are never silently reinterpreted
+as v2.
 
 NEXO's `audit_chain/v1` records selected mutating application events. It is a
 tamper-evident integrity mechanism for the declared event history; it is not a

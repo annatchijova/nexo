@@ -24,7 +24,13 @@ fn main() {
     }
     if audit {
         match verify_audit_export(path) {
-            Ok(report) if report.complete_history && report.integrity_ok && report.linkage_ok => {
+            Ok(report)
+                if report.complete_history
+                    && report.integrity_ok
+                    && report.linkage_ok
+                    && report.hmac_checked
+                    && report.hmac_ok =>
+            {
                 println!(
                     "AUDIT VERIFIED chain={} entries={} tip={}",
                     report.chain_id, report.entries, report.tip_digest

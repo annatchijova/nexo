@@ -6,6 +6,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+if [ -z "${NEXO_AUDIT_HMAC_KEY:-}" ]; then
+  export NEXO_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
+fi
+export NEXO_AUDIT_HMAC_KEY_VERSION="${NEXO_AUDIT_HMAC_KEY_VERSION:-v1}"
+
 CONTAINER_NAME="nexo-pg-repository-test"
 PORT=55434
 DB=nexo_repository_test
@@ -39,6 +44,8 @@ psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
   -f crates/nexo-app/migrations/0001_init.sql >/dev/null
 psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
   -f crates/nexo-app/migrations/0002_audit_chain_v1.sql >/dev/null
+psql -h 127.0.0.1 -p "$PORT" -U postgres -d "$DB" -v ON_ERROR_STOP=1 \
+  -f crates/nexo-app/migrations/0003_audit_chain_v2_hmac.sql >/dev/null
 
 export DATABASE_URL="postgres://postgres:nexo@127.0.0.1:${PORT}/${DB}"
 echo "== running repository integration tests =="

@@ -244,12 +244,13 @@ gives:
   preparation-insert time, and every invalidated preparation carries a
   non-empty reason. New rows always start in `prepared`; export and
   invalidation are explicit later transitions.
-- **`audit_log`** — the PostgreSQL projection of `audit_chain/v1`. Audited
+- **`audit_log`** — the PostgreSQL projection of `audit_chain/v2`. Audited
   application mutations append a canonical full event, advance the chain tip,
-  and record a checkpoint in the same transaction. The independent verifier
-  contract and the limits of this local checkpoint are defined in
-  `docs/AUDIT_CHAIN_V1_CONTRACT.md`; the table's append-only trigger alone is
-  not a cryptographic guarantee.
+  record an authenticated checkpoint in the same transaction, and fail closed
+  if the configured HMAC key is unavailable. The independent verifier contract
+  and key custody boundary are defined in
+  `docs/AUDIT_CHAIN_V2_HMAC_CONTRACT.md`; the table's append-only trigger alone
+  is not a cryptographic guarantee.
 
 ## What this layer explicitly does not do
 

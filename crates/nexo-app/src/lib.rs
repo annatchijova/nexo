@@ -7,6 +7,8 @@
 
 pub const SCHEMA_MIGRATION: &str = include_str!("../migrations/0001_init.sql");
 pub const AUDIT_CHAIN_MIGRATION: &str = include_str!("../migrations/0002_audit_chain_v1.sql");
+pub const AUDIT_CHAIN_HMAC_MIGRATION: &str =
+    include_str!("../migrations/0003_audit_chain_v2_hmac.sql");
 
 pub mod audit;
 pub mod export;

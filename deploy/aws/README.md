@@ -39,10 +39,19 @@ tres extractores sandboxeados (`scripts/build_extractors.sh`) y el binario
 — nunca pisa secretos ya generados), e instala y arranca
 `deploy/aws/nexo-api.service`.
 
-La primera corrida imprime el `NEXO_BOOTSTRAP_OWNER` recién generado — es
-el bearer token del único dueño de la instancia. Guardalo en un lugar
-seguro ahora; no se vuelve a imprimir, y sin él no hay forma de autenticar
-contra la API.
+La primera corrida genera `NEXO_BOOTSTRAP_OWNER` — es el bearer token del
+único dueño de la instancia. La variable queda en el archivo protegido
+`/etc/nexo/nexo-api.env`; la persona administradora debe recuperarla en el
+servidor y entregarla por un canal privado:
+
+```sh
+sudo awk -F= '$1=="NEXO_BOOTSTRAP_OWNER"{print $2}' /etc/nexo/nexo-api.env
+```
+
+Guardala en un gestor de contraseñas. No la pegues en Git, documentación
+pública, capturas o chats abiertos. Si se pierde, la base de datos no puede
+reconstruirla porque solo conserva su hash; hay que emitir una credencial
+nueva mediante un flujo autenticado o controlado.
 
 ## 2. Variables en `/etc/nexo/nexo-api.env` (permisos `0600`)
 

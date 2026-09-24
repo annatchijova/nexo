@@ -205,7 +205,21 @@ function renderLanding(): void {
     <section class="landing-footer panel"><div><h2>${text("You do not need to understand the technology to begin.", "No necesitás entender la tecnología para empezar.")}</h2><p class="muted">${text("The technical details exist for people who need to inspect them. This space is for you and what you need to preserve.", "Los detalles técnicos existen para quienes necesitan inspeccionarlos. Este espacio es para vos y para lo que necesitás conservar.")}</p></div><button id="start-workspace-bottom" class="secondary" type="button">${text("Open my workspace", "Abrir mi espacio")}</button></section>
     <footer><span>${text("NEXO is not a lawyer or an emergency service. If you are in immediate danger, contact local emergency support.", "NEXO no es un abogado ni un servicio de emergencias. Si estás en peligro inmediato, contactá a los servicios de emergencia locales.")}</span></footer>
   </main>`;
+  document.querySelector<HTMLElement>(".hero")?.insertAdjacentHTML("afterend", renderDemoSpotlight());
+  addGithubLink();
   bindLandingEvents();
+}
+
+function renderDemoSpotlight(): string {
+  return `<section class="demo-spotlight panel"><div><span class="eyebrow">${text("TRY THE COMPLETE FLOW", "PROBÁ EL FLUJO COMPLETO")}</span><h2>${text("DEMO: complete a real NEXO-style case", "DEMO: completá un caso al estilo real de NEXO")}</h2><p>${text("No token. No sign-in. No invented screenshots. Choose a personal-data request or a digital-violence case, add the same kind of .eml/PDF evidence used in the implementation tests, evaluate it, and prepare the result.", "Sin token. Sin registro. Sin capturas inventadas. Elegí un pedido de datos personales o un caso de violencia digital, agregá el mismo tipo de evidencia .eml/PDF que usan los tests de implementación, evaluá y prepará el resultado.")}</p></div><button id="open-demo-primary" type="button">${text("OPEN THE DEMO", "ABRIR LA DEMO")}</button></section>`;
+}
+
+function addGithubLink(): void {
+  document.querySelector<HTMLElement>(".topbar-actions")?.insertAdjacentHTML("afterbegin", `<a class="utility-button github-link" href="https://github.com/annatchijova/nexo" target="_blank" rel="noreferrer">GitHub</a>`);
+}
+
+function renderPrivateWorkspaceIntro(): string {
+  return `<section class="intro panel"><span class="eyebrow">${text("PRIVATE LEGAL PREPARATION WORKSPACE", "ESPACIO PRIVADO DE PREPARACIÓN LEGAL")}</span><h2>${text("Preserve what happened. Understand which rights may be involved. Prepare a clear record for legal review.", "Preservá lo que pasó. Entendé qué derechos pueden estar involucrados. Prepará un registro claro para revisarlo legalmente.")}</h2><p>${text("Use NEXO after a possible digital-violence incident, privacy violation, unauthorized publication, or personal-data problem. Add the messages, emails, PDFs and your own account. NEXO keeps them distinct, shows what is supported, identifies what is missing, and helps prepare material to review with a lawyer, support organization, or authority.", "Usá NEXO después de un posible episodio de violencia digital, una vulneración de privacidad, una publicación no autorizada o un problema con datos personales. Agregá mensajes, correos, PDFs y tu propio relato. NEXO los mantiene diferenciados, muestra qué está respaldado, identifica qué falta y ayuda a preparar material para revisar con un abogado, una organización de apoyo o una autoridad.")}</p><div class="workspace-use-cases"><strong>${text("Use cases", "Casos de uso")}</strong><span>${text("Personal-data access · digital violence · unauthorized publication · evidence preparation", "Acceso a datos personales · violencia digital · publicación no autorizada · preparación de evidencia")}</span></div><details><summary>${text("Why email, PDF and SHA-256 matter", "Por qué importan el correo, el PDF y SHA-256")}</summary><p>${text("An .eml file preserves email headers such as sender, recipient, subject and date. A PDF can preserve a document or exported record in the form it was received. SHA-256 gives each original file a fingerprint so a later reviewer can check that the bytes did not change. None of these proves a case by itself; together they preserve context for legal review.", "Un archivo .eml conserva encabezados del correo como remitente, destinatario, asunto y fecha. Un PDF puede conservar un documento o registro exportado tal como fue recibido. SHA-256 le da una huella a cada archivo original para que después se pueda comprobar que sus bytes no cambiaron. Nada de esto prueba un caso por sí solo; conserva contexto para la revisión legal.")}</p></details></section>`;
 }
 
 function renderGuide(): void {
@@ -218,6 +232,7 @@ function renderGuide(): void {
     <section class="guide-actions"><button id="start-workspace-guide" type="button">${text("Open my workspace", "Abrir mi espacio")}</button><button id="back-home-bottom" class="secondary" type="button">${text("Back to examples", "Volver a los ejemplos")}</button></section>
   </main>`;
   document.querySelector<HTMLElement>(".guide-steps")?.insertAdjacentHTML("afterbegin", renderAdminTokenGuide());
+  addGithubLink();
   bindGuideEvents();
 }
 
@@ -242,18 +257,19 @@ function renderDemo(): void {
   if (scenario && !state.demoEvidenceAdded) {
     document.querySelector<HTMLElement>(".demo-step-card")?.insertAdjacentHTML("beforeend", renderDemoSource(scenario));
   }
+  addGithubLink();
   bindDemoEvents();
 }
 
 function renderDemoSource(scenario: DemoScenario): string {
   return scenario === "data-access"
-    ? `<details class="demo-source"><summary>${text("Show the example .eml content", "Ver el contenido del .eml de ejemplo")}</summary><pre>From: alice@example.com
+    ? `<details class="demo-source"><summary>${text("Show and download the example .eml", "Ver y descargar el .eml de ejemplo")}</summary><p>${text("This is the same kind of email used by Claude's API test: headers plus the request body.", "Este es el mismo tipo de correo que usa el test de API de Claude: encabezados más el cuerpo del pedido.")}</p><a class="text-link" href="/demo-access-request.eml" download>demo-access-request.eml</a><pre>From: alice@example.com
 To: bob@example.com
 Subject: Solicito acceso
 Date: Mon, 1 Jan 2024 00:00:00 +0000
 
 Solicito acceso a mis datos.</pre></details>`
-    : `<details class="demo-source"><summary>${text("Show the example evidence", "Ver la evidencia de ejemplo")}</summary><pre>${text("Publicaron contenido intimo mio sin consentimiento en esta URL: https://example.com/x", "Publicaron contenido íntimo mío sin consentimiento en esta URL: https://example.com/x")}</pre><p class="field-help">${text("This is the same kind of input covered by the digital-violence API flow. The demo does not upload it.", "Este es el mismo tipo de entrada que cubre el flujo de API de violencia digital. La demo no lo sube.")}</p></details>`;
+    : `<details class="demo-source"><summary>${text("Show and download the example PDF", "Ver y descargar el PDF de ejemplo")}</summary><p>${text("This PDF fixture is the real one used by the evidence-extraction tests. It contains a dated record and a violence-digital notification example.", "Este PDF es el fixture real usado por los tests de extracción. Contiene un registro fechado y un ejemplo de notificación de violencia digital.")}</p><a class="text-link" href="/demo-violence-evidence.pdf" download>demo-violence-evidence.pdf</a><pre>${text("Publicaron contenido intimo mio sin consentimiento en esta URL: https://example.com/x", "Publicaron contenido íntimo mío sin consentimiento en esta URL: https://example.com/x")}</pre><p class="field-help">${text("The message is the case input; the PDF is an additional preserved artifact. The demo does not upload either file.", "El mensaje es la entrada del caso; el PDF es un artefacto adicional preservado. La demo no sube ninguno de los dos archivos.")}</p></details>`;
 }
 
 function bindDemoEvents(): void {
@@ -277,6 +293,7 @@ function bindLandingEvents(): void {
   document.querySelector<HTMLButtonElement>("#theme-toggle")?.addEventListener("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("nexo-theme", state.theme); renderLanding(); });
   document.querySelector<HTMLButtonElement>("#open-guide")?.addEventListener("click", () => { state.view = "guide"; localStorage.setItem("nexo-view", "guide"); render(); });
   document.querySelector<HTMLButtonElement>("#open-demo")?.addEventListener("click", () => { state.view = "demo"; localStorage.setItem("nexo-view", "demo"); window.history.pushState({}, "", "/demo"); render(); });
+  document.querySelector<HTMLButtonElement>("#open-demo-primary")?.addEventListener("click", () => { state.view = "demo"; localStorage.setItem("nexo-view", "demo"); window.history.pushState({}, "", "/demo"); render(); });
   const openWorkspace = () => { state.view = "workspace"; localStorage.setItem("nexo-view", "workspace"); render(); document.querySelector<HTMLInputElement>("#token")?.focus(); };
   document.querySelector<HTMLButtonElement>("#start-workspace")?.addEventListener("click", openWorkspace);
   document.querySelector<HTMLButtonElement>("#start-workspace-bottom")?.addEventListener("click", openWorkspace);
@@ -312,6 +329,8 @@ function render(): void {
       <section class="panel"><div class="section-heading"><div><span class="eyebrow">${text("EVALUATION", "EVALUACIÓN")}</span><h2>${text("Why is this shown?", "¿Por qué aparece esto?")}</h2></div><button id="evaluate" type="button">${text("Evaluate case", "Evaluar caso")}</button></div><div id="evaluation-output" aria-live="polite">${renderEvaluation()}</div><div class="preparation-section"><span class="eyebrow">${text("PREPARATION / EXPORT", "PREPARACIÓN / EXPORTACIÓN")}</span><h3>${text("Keep the proof portable", "Conservá la prueba portable")}</h3>${renderPreparation()}</div></section></div>
     </section><footer><span>${text("NEXO stops at preparation. A human remains the actor for any external legal act.", "NEXO se detiene en la preparación. Una persona sigue siendo responsable de cualquier acto legal externo.")}</span></footer>
   </main>`;
+  document.querySelector<HTMLElement>(".shell > .intro")?.replaceWith(document.createRange().createContextualFragment(renderPrivateWorkspaceIntro()));
+  addGithubLink();
   bindEvents();
 }
 

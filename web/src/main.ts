@@ -264,7 +264,7 @@ function renderLanding(): void {
     <section class="landing-footer panel"><div><h2>${text("You do not need to understand the technology to begin.", "No necesitás entender la tecnología para empezar.")}</h2><p class="muted">${text("The technical details exist for people who need to inspect them. This space is for you and what you need to preserve.", "Los detalles técnicos existen para quienes necesitan inspeccionarlos. Este espacio es para vos y para lo que necesitás conservar.")}</p></div><button id="start-workspace-bottom" class="secondary" type="button">${text("Open my workspace", "Abrir mi espacio")}</button></section>
     <footer><span>${text("NEXO is not a lawyer or an emergency service. If you are in immediate danger, contact local emergency support.", "NEXO no es un abogado ni un servicio de emergencias. Si estás en peligro inmediato, contactá a los servicios de emergencia locales.")}</span></footer>
   </main>`;
-  document.querySelector<HTMLElement>(".hero")?.insertAdjacentHTML("afterend", renderDemoSpotlight());
+  document.querySelector<HTMLElement>(".hero")?.insertAdjacentHTML("beforebegin", renderDemoSpotlight());
   addGithubLink();
   bindLandingEvents();
 }

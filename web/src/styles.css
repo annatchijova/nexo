@@ -20,7 +20,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .hero-note { border: 1px solid #527084; border-radius: 14px; padding: 1.25rem; background: #0b131b99; }
 .note-mark { color: var(--amber); font-size: 2rem; }
 .hero-note p { color: #dce7eb; line-height: 1.55; }
-.demo-spotlight { display: grid; gap: 1.2rem; margin: -2rem 0 4rem; padding: clamp(1.4rem, 4vw, 2.5rem); border: 3px solid var(--cyan); background: #12343b; } .demo-spotlight-heading h2 { max-width: 24ch; margin: .35rem 0 .65rem; font-size: clamp(1.8rem, 5vw, 3.4rem); } .demo-spotlight p { max-width: 78ch; color: #effbfc; line-height: 1.6; } .demo-spotlight button { justify-self: start; min-width: 15rem; min-height: 3.5rem; font-weight: 850; letter-spacing: .04em; }
+.demo-spotlight { display: grid; gap: 1.2rem; margin: 2rem 0 2.5rem; padding: clamp(1.4rem, 4vw, 2.5rem); border: 3px solid var(--cyan); background: #12343b; } .demo-spotlight-heading h2 { max-width: 24ch; margin: .35rem 0 .65rem; font-size: clamp(1.8rem, 5vw, 3.4rem); } .demo-spotlight p { max-width: 78ch; color: #effbfc; line-height: 1.6; } .demo-spotlight button { justify-self: start; min-width: 15rem; min-height: 3.5rem; font-weight: 850; letter-spacing: .04em; }
 .demo-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; } .demo-preview-grid article { min-height: 10rem; padding: 1.25rem; border: 1px solid #65dbe4; border-radius: 12px; background: #0b2027; } .demo-preview-grid h3 { color: #ffffff; margin: .45rem 0 .65rem; } .demo-preview-grid p { color: #e1f0f2; margin: 0; }
 .landing-section { margin: 0 0 4rem; }
 .landing-section > h2 { max-width: 22ch; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -.04em; }

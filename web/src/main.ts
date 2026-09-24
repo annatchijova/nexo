@@ -1,5 +1,5 @@
 import "./styles.css";
-import logoUrl from "../../visual/logo.png";
+const logoUrl = "/logo.png";
 
 type CaseNode = {
   node_id: number;

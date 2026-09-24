@@ -32,6 +32,7 @@ type Evaluation = {
 };
 type EvidenceKind = "plain_text" | "eml" | "pdf";
 type DemoScenario = "data-access" | "digital-violence";
+type DemoArtifact = { id: "eml" | "pdf" | "manifest"; name: string; mime: string; bytes: Uint8Array; sha256: string };
 
 const state = {
   view: window.location.pathname === "/demo" ? "demo" : (localStorage.getItem("nexo-view") === "workspace" ? "workspace" : "home"),
@@ -40,6 +41,7 @@ const state = {
   demoRequirementMet: false,
   demoEvaluated: false,
   demoPrepared: false,
+  demoArtifacts: [] as DemoArtifact[],
   language: localStorage.getItem("nexo-language") === "es" ? "es" : "en",
   theme: localStorage.getItem("nexo-theme") === "light" ? "light" : "dark",
   apiBase: localStorage.getItem("nexo-api-base") || import.meta.env.VITE_NEXO_API_BASE || "",
@@ -143,7 +145,64 @@ function downloadBlob(blob: Blob, filename: string): void {
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(link.href);
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function downloadBytes(bytes: Uint8Array, mime: string, filename: string): void {
+  downloadBlob(new Blob([bytes as BlobPart], { type: mime }), filename);
+}
+
+function pdfEscape(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+}
+
+function makeDemoPdf(lines: string[]): Uint8Array {
+  const content = ["BT", "/F1 12 Tf", "72 730 Td", ...lines.flatMap((line, index) => [`(${pdfEscape(line)}) Tj`, index === lines.length - 1 ? "" : "0 -20 Td"]), "ET"].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}\nendstream`,
+  ];
+  let output = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => { offsets.push(new TextEncoder().encode(output).length); output += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = new TextEncoder().encode(output).length;
+  output += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(output);
+}
+
+async function buildDemoArtifacts(scenario: DemoScenario): Promise<DemoArtifact[]> {
+  const dataAccess = scenario === "data-access";
+  const eml = new TextEncoder().encode(dataAccess
+    ? "From: alice@example.com\nTo: bob@example.com\nSubject: Solicito acceso a mis datos\nDate: Mon, 1 Jan 2024 00:00:00 +0000\nContent-Type: text/plain; charset=utf-8\n\nSolicito acceso a mis datos personales.\n"
+    : "From: person@example.invalid\nTo: support@example.invalid\nSubject: Contenido publicado sin consentimiento\nDate: Mon, 1 Jan 2024 00:00:00 +0000\nContent-Type: text/plain; charset=utf-8\n\nPublicaron contenido intimo mio sin consentimiento en https://example.com/x.\n");
+  const emailHash = await sha256Hex(eml);
+  const pdf = makeDemoPdf(dataAccess
+    ? ["NEXO DEMO - EVIDENCE RECORD", "Case: personal-data access", "Evidence: email request", `Email SHA-256: ${emailHash}`, "Status: prepared for human review"]
+    : ["NEXO DEMO - EVIDENCE RECORD", "Case: digital violence / unauthorized publication", "Evidence: reported location", `Email SHA-256: ${emailHash}`, "Status: prepared for human review"]);
+  const pdfHash = await sha256Hex(pdf);
+  const entries = [
+    { filename: dataAccess ? "nexo-demo-data-access.eml" : "nexo-demo-digital-violence.eml", media_type: "message/rfc822", sha256: emailHash, bytes: eml.length },
+    { filename: dataAccess ? "nexo-demo-data-access.pdf" : "nexo-demo-digital-violence.pdf", media_type: "application/pdf", sha256: pdfHash, bytes: pdf.length },
+  ];
+  const manifestText = `${JSON.stringify({ schema_version: 1, seal: "SHA-256", case: scenario, artifacts: entries }, null, 2)}\n`;
+  const manifest = new TextEncoder().encode(manifestText);
+  return [
+    { id: "eml", name: entries[0].filename, mime: entries[0].media_type, bytes: eml, sha256: emailHash },
+    { id: "pdf", name: entries[1].filename, mime: entries[1].media_type, bytes: pdf, sha256: pdfHash },
+    { id: "manifest", name: dataAccess ? "nexo-demo-data-access.manifest.json" : "nexo-demo-digital-violence.manifest.json", mime: "application/json", bytes: manifest, sha256: await sha256Hex(manifest) },
+  ];
+}
+
+function renderDemoExport(): string {
+  return `<section class="demo-export"><span class="eyebrow">${text("SEALED DEMO MATERIAL", "MATERIAL DE DEMO SELLADO")}</span><h3>${text("Download the three files", "Descargá los tres archivos")}</h3><p>${text("These are newly generated bytes: an .eml, a PDF record, and a JSON manifest. The manifest lists the SHA-256 of each file so another person can verify the exact downloads.", "Son archivos nuevos: un .eml, un PDF y un manifiesto JSON. El manifiesto lista el SHA-256 de cada archivo para que otra persona pueda verificar exactamente esas descargas.")}</p><div class="demo-downloads">${state.demoArtifacts.map((artifact) => `<button class="secondary demo-download" data-artifact="${artifact.id}" type="button">${text("Download", "Descargar")} ${escapeHtml(artifact.name)}</button>`).join("")}</div><ul class="demo-digests">${state.demoArtifacts.map((artifact) => `<li><strong>${escapeHtml(artifact.name)}</strong><code>${escapeHtml(artifact.sha256)}</code></li>`).join("")}</ul><p class="field-help">${text("Demo limitation: this is a browser-generated SHA-256 seal, not a real backend case, signed receipt, or legal finding. The connected workspace uses the backend preparation/export endpoints described in the technical README.", "Límite de la demo: este sellado SHA-256 se genera en el navegador; no es un caso real del backend, un recibo firmado ni una conclusión legal. El espacio conectado usa los endpoints de preparación/exportación del backend descritos en el README técnico.")}</p></section>`;
 }
 
 function renderTimeline(): string {
@@ -222,6 +281,10 @@ function renderPrivateWorkspaceIntro(): string {
   return `<section class="intro panel"><span class="eyebrow">${text("PRIVATE LEGAL PREPARATION WORKSPACE", "ESPACIO PRIVADO DE PREPARACIÓN LEGAL")}</span><h2>${text("Preserve what happened. Understand which rights may be involved. Prepare a clear record for legal review.", "Preservá lo que pasó. Entendé qué derechos pueden estar involucrados. Prepará un registro claro para revisarlo legalmente.")}</h2><p>${text("Use NEXO after a possible digital-violence incident, privacy violation, unauthorized publication, or personal-data problem. Add the messages, emails, PDFs and your own account. NEXO keeps them distinct, shows what is supported, identifies what is missing, and helps prepare material to review with a lawyer, support organization, or authority.", "Usá NEXO después de un posible episodio de violencia digital, una vulneración de privacidad, una publicación no autorizada o un problema con datos personales. Agregá mensajes, correos, PDFs y tu propio relato. NEXO los mantiene diferenciados, muestra qué está respaldado, identifica qué falta y ayuda a preparar material para revisar con un abogado, una organización de apoyo o una autoridad.")}</p><div class="workspace-use-cases"><strong>${text("Use cases", "Casos de uso")}</strong><span>${text("Personal-data access · digital violence · unauthorized publication · evidence preparation", "Acceso a datos personales · violencia digital · publicación no autorizada · preparación de evidencia")}</span></div><details><summary>${text("Why email, PDF and SHA-256 matter", "Por qué importan el correo, el PDF y SHA-256")}</summary><p>${text("An .eml file preserves email headers such as sender, recipient, subject and date. A PDF can preserve a document or exported record in the form it was received. SHA-256 gives each original file a fingerprint so a later reviewer can check that the bytes did not change. None of these proves a case by itself; together they preserve context for legal review.", "Un archivo .eml conserva encabezados del correo como remitente, destinatario, asunto y fecha. Un PDF puede conservar un documento o registro exportado tal como fue recibido. SHA-256 le da una huella a cada archivo original para que después se pueda comprobar que sus bytes no cambiaron. Nada de esto prueba un caso por sí solo; conserva contexto para la revisión legal.")}</p></details></section>`;
 }
 
+function renderWorkspaceLimits(): string {
+  return `<section class="workspace-limits panel"><span class="eyebrow">${text("FILES AND LIMITS", "ARCHIVOS Y LÍMITES")}</span><h2>${text("What you can add", "Qué podés agregar")}</h2><p>${text("Add several evidence items one at a time: plain text, an email exported as .eml, or a PDF. Each extractor input is capped at 25 MiB; the sandbox pre-flight default is 32 MiB, with additional email and PDF limits. ZIP is not accepted because it would hide multiple files behind an archive extractor and make provenance and decompression limits ambiguous. Unpack it and add the relevant files individually.", "Agregá varias piezas de evidencia, una por vez: texto, un correo exportado como .eml o un PDF. Cada entrada del extractor tiene un límite de 25 MiB; el límite preventivo predeterminado del sandbox es 32 MiB, además de límites específicos para correo y PDF. ZIP no se acepta porque ocultaría varias piezas detrás de un extractor de archivos y volvería ambiguos el origen y los límites de descompresión. Descomprimilo y agregá cada archivo relevante por separado.")}</p><details><summary>${text("How do I get .eml?", "¿Cómo saco un .eml?")}</summary><p>${text("In Gmail: open the message, three-dot menu, Download message. In Outlook: File > Save As or drag the message to a folder; labels vary by version. If your provider has no download option, preserve the original message and use Print/Save as PDF instead. Do not rename a screenshot to .eml.", "En Gmail: abrí el mensaje, menú de tres puntos, Descargar mensaje. En Outlook: Archivo > Guardar como o arrastrá el mensaje a una carpeta; los nombres cambian según la versión. Si tu proveedor no ofrece descargarlo, conservá el mensaje original y usá Imprimir/Guardar como PDF. No cambies la extensión de una captura a .eml.")}</p></details></section>`;
+}
+
 function renderGuide(): void {
   applyTheme();
   app.innerHTML = `<main class="guide-page shell">
@@ -253,6 +316,7 @@ function renderDemo(): void {
     const requirementLabel = dataAccess ? text("Identity confirmed", "Identidad confirmada") : text("Content location identified", "Ubicación del contenido identificada");
     const result = dataAccess ? text("A request route is supported by the recorded email and confirmed identity.", "El pedido está respaldado por el correo registrado y la identidad confirmada.") : text("A possible content-removal route is supported because the specific content location was identified.", "Una posible vía de remoción está respaldada porque se identificó dónde está el contenido.");
     app.innerHTML = `<main class="demo-page shell">${header}<section class="demo-workspace panel"><div class="demo-heading"><div><span class="eyebrow">${text("GUIDED CASE", "CASO GUIADO")}</span><h2>${title}</h2></div><button id="choose-another-demo" class="secondary" type="button">${text("Choose another case", "Elegir otro caso")}</button></div><div class="demo-banner">${text("You are in a safe example. Nothing here reaches the real backend.", "Estás en un ejemplo seguro. Nada de acá llega al backend real.")}</div><ol class="demo-progress"><li class="${state.demoEvidenceAdded ? "done" : "active"}"><strong>1</strong><span>${text("Add evidence", "Agregar evidencia")}</span></li><li class="${state.demoRequirementMet ? "done" : state.demoEvidenceAdded ? "active" : ""}"><strong>2</strong><span>${requirementLabel}</span></li><li class="${state.demoEvaluated ? "done" : state.demoRequirementMet ? "active" : ""}"><strong>3</strong><span>${text("Evaluate", "Evaluar")}</span></li><li class="${state.demoPrepared ? "done" : state.demoEvaluated ? "active" : ""}"><strong>4</strong><span>${text("Prepare", "Preparar")}</span></li></ol><section class="demo-step-card"><span class="eyebrow">${text("YOUR NEXT STEP", "TU PRÓXIMO PASO")}</span>${!state.demoEvidenceAdded ? `<h3>${text("Start by adding the example evidence", "Empezá agregando la evidencia de ejemplo")}</h3><p>${dataAccess ? text("This is a fictional .eml email asking an organization for access to personal data.", "Este es un correo .eml ficticio que pide a una organización acceso a datos personales.") : text("This is a fictional message plus a PDF record identifying where content was published.", "Este es un mensaje ficticio más un PDF que identifica dónde se publicó el contenido.")}</p><button id="demo-add-evidence" type="button">${text("Add example evidence", "Agregar evidencia de ejemplo")}</button>` : !state.demoRequirementMet ? `<h3>${requirementLabel}</h3><p>${dataAccess ? text("In a real case, this is where the owner confirms a fact about their identity. In this demo, you can see the same step without sharing anything.", "En un caso real, acá la titular confirma un hecho sobre su identidad. En esta demo podés ver el mismo paso sin compartir nada.") : text("In a real case, this is where the specific URL or place containing the content becomes part of the evidence graph.", "En un caso real, acá la URL o el lugar específico del contenido pasa a formar parte del grafo de evidencia.")}</p><button id="demo-meet-requirement" type="button">${dataAccess ? text("Confirm identity", "Confirmar identidad") : text("Identify content location", "Identificar ubicación")}</button>` : !state.demoEvaluated ? `<h3>${text("The case is ready to evaluate", "El caso está listo para evaluar")}</h3><p>${text("NEXO will show what is supported and why. It will not invent a conclusion if the evidence is insufficient.", "NEXO va a mostrar qué está respaldado y por qué. No va a inventar una conclusión si la evidencia no alcanza.")}</p><button id="demo-evaluate" type="button">${text("Evaluate example case", "Evaluar caso de ejemplo")}</button>` : !state.demoPrepared ? `<div class="demo-result"><span class="eyebrow">${text("SUPPORTED EXAMPLE RESULT", "RESULTADO DE EJEMPLO RESPALDADO")}</span><h3>${text("A possible next step is available", "Hay un posible próximo paso")}</h3><p>${result}</p><ul><li>${evidenceLabel}</li><li>${requirementLabel}</li><li>${text("Source-backed explanation", "Explicación respaldada por una fuente")}</li></ul></div><button id="demo-prepare" type="button">${text("Prepare example materials", "Preparar materiales de ejemplo")}</button>` : `<div class="demo-result positive"><span class="eyebrow">${text("DEMO COMPLETE", "DEMO COMPLETA")}</span><h3>${text("The materials are ready to review", "Los materiales están listos para revisar")}</h3><p>${text("This is where NEXO stops. In a real case, a person reviews the material and decides what to do next.", "Acá termina NEXO. En un caso real, una persona revisa el material y decide qué hacer después.")}</p><button id="demo-restart" class="secondary" type="button">${text("Run it again", "Repetir demo")}</button></div>`}</section></section></main>`;
+    if (state.demoPrepared && state.demoArtifacts.length) document.querySelector<HTMLElement>(".demo-step-card")?.insertAdjacentHTML("beforeend", renderDemoExport());
   }
   if (scenario && !state.demoEvidenceAdded) {
     document.querySelector<HTMLElement>(".demo-step-card")?.insertAdjacentHTML("beforeend", renderDemoSource(scenario));
@@ -274,7 +338,7 @@ Solicito acceso a mis datos.</pre></details>`
 
 function bindDemoEvents(): void {
   const goHome = () => { state.view = "home"; state.demoScenario = null; window.history.pushState({}, "", "/"); localStorage.setItem("nexo-view", "home"); render(); };
-  const choose = (scenario: DemoScenario) => { state.view = "demo"; state.demoScenario = scenario; state.demoEvidenceAdded = false; state.demoRequirementMet = false; state.demoEvaluated = false; state.demoPrepared = false; window.history.pushState({}, "", "/demo"); renderDemo(); };
+  const choose = (scenario: DemoScenario) => { state.view = "demo"; state.demoScenario = scenario; state.demoEvidenceAdded = false; state.demoRequirementMet = false; state.demoEvaluated = false; state.demoPrepared = false; state.demoArtifacts = []; window.history.pushState({}, "", "/demo"); renderDemo(); };
   document.querySelector<HTMLButtonElement>("#demo-home")?.addEventListener("click", goHome);
   document.querySelector<HTMLButtonElement>("#demo-language")?.addEventListener("click", () => { state.language = state.language === "en" ? "es" : "en"; localStorage.setItem("nexo-language", state.language); renderDemo(); });
   document.querySelector<HTMLButtonElement>("#demo-theme")?.addEventListener("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("nexo-theme", state.theme); renderDemo(); });
@@ -284,7 +348,8 @@ function bindDemoEvents(): void {
   document.querySelector<HTMLButtonElement>("#demo-add-evidence")?.addEventListener("click", () => { state.demoEvidenceAdded = true; renderDemo(); });
   document.querySelector<HTMLButtonElement>("#demo-meet-requirement")?.addEventListener("click", () => { state.demoRequirementMet = true; renderDemo(); });
   document.querySelector<HTMLButtonElement>("#demo-evaluate")?.addEventListener("click", () => { state.demoEvaluated = true; renderDemo(); });
-  document.querySelector<HTMLButtonElement>("#demo-prepare")?.addEventListener("click", () => { state.demoPrepared = true; renderDemo(); });
+  document.querySelector<HTMLButtonElement>("#demo-prepare")?.addEventListener("click", async () => { state.demoPrepared = true; state.demoArtifacts = await buildDemoArtifacts(state.demoScenario ?? "data-access"); renderDemo(); });
+  document.querySelectorAll<HTMLButtonElement>(".demo-download").forEach((button) => button.addEventListener("click", () => { const artifact = state.demoArtifacts.find((item) => item.id === button.dataset.artifact); if (artifact) downloadBytes(artifact.bytes, artifact.mime, artifact.name); }));
   document.querySelector<HTMLButtonElement>("#demo-restart")?.addEventListener("click", () => choose(state.demoScenario ?? "data-access"));
 }
 
@@ -330,6 +395,7 @@ function render(): void {
     </section><footer><span>${text("NEXO stops at preparation. A human remains the actor for any external legal act.", "NEXO se detiene en la preparación. Una persona sigue siendo responsable de cualquier acto legal externo.")}</span></footer>
   </main>`;
   document.querySelector<HTMLElement>(".shell > .intro")?.replaceWith(document.createRange().createContextualFragment(renderPrivateWorkspaceIntro()));
+  document.querySelector<HTMLElement>(".shell > .intro")?.insertAdjacentHTML("afterend", renderWorkspaceLimits());
   addGithubLink();
   bindEvents();
 }

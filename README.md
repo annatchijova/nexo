@@ -8,6 +8,10 @@
 
 **Turn what happened to you into something you can actually show someone.**
 
+<p align="center">
+  <img src="visual/screenshot-landing-demo.png" alt="NEXO landing page, inviting you to try the complete flow before touching a token" width="720" />
+</p>
+
 ## The night this started mattering
 
 Picture the moment right after it happens. Someone posted something of
@@ -48,6 +52,10 @@ flowchart LR
     question -->|"no"| honest["An honest explanation<br/>of why not"]
 ```
 
+<p align="center">
+  <img src="visual/screenshot-hero.png" alt="NEXO landing page: 'Understand what happened and prepare what comes next.'" width="720" />
+</p>
+
 ## What NEXO refuses to be
 
 It refuses to be another tool that sounds confident and isn't. It is not a
@@ -62,6 +70,10 @@ as a second, independently-built bundle rather than a shortcut.
 | When nothing applies | Shows a generic result anyway, or just goes blank | An honest negative result, with its precise cause, is a first-class outcome |
 | Legal basis | Paraphrased or generic | Cites the actual captured statute text behind each claim |
 | Filing the action | Sometimes implied or automated | Never — NEXO prepares materials, you send them |
+
+<p align="center">
+  <img src="visual/screenshot-how-it-works.png" alt="Three steps: Gather, Understand, Prepare — plus honesty-by-design cards and the two example cases" width="720" />
+</p>
 
 ## Why the receipts matter
 
@@ -103,6 +115,10 @@ nexo/
 └── scripts/                              # test and schema helpers
 ```
 
+<p align="center">
+  <img src="visual/screenshot-workspace.png" alt="The private legal preparation workspace: preserve what happened, understand which rights may be involved, prepare a clear record" width="720" />
+</p>
+
 ## This isn't a mockup
 
 Argentina has two real, wired policy bundles — Ley 25.326 (personal data
@@ -131,6 +147,14 @@ SHA-256 manifest it generates. The full interface is live at
 [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app); creating a
 real case needs a running backend behind it — see the
 [Technical README](docs/TECHNICAL_README.md) for what that takes.
+
+<p align="center">
+  <img src="visual/screenshot-case-panel.png" alt="The real workspace: start a case, add evidence, confirm an assertion, evaluate, and prepare an export" width="720" />
+</p>
+
+<p align="center">
+  <img src="visual/screenshot-verification.png" alt="Why .eml, PDF, and SHA-256 matter, and exactly where a workspace token comes from" width="720" />
+</p>
 
 ---
 

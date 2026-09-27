@@ -8,6 +8,10 @@
 
 **Convertí lo que te pasó en algo que de verdad le podés mostrar a alguien.**
 
+<p align="center">
+  <img src="visual/screenshot-landing-demo.png" alt="Portada de NEXO, invitando a probar el flujo completo antes de tocar un token" width="720" />
+</p>
+
 ## La noche en la que esto empezó a importar
 
 Imaginate el momento justo después de que pasa. Alguien publicó algo tuyo
@@ -50,6 +54,10 @@ flowchart LR
     question -->|"no"| honest["Una explicación honesta<br/>de por qué no"]
 ```
 
+<p align="center">
+  <img src="visual/screenshot-hero.png" alt="Portada de NEXO: 'Entendé qué pasó y preparate para lo que sigue.'" width="720" />
+</p>
+
 ## Lo que NEXO se niega a ser
 
 Se niega a ser otra herramienta que suena segura de sí misma sin serlo. No
@@ -65,6 +73,10 @@ independiente, no como un atajo.
 | Cuando nada aplica | Muestra un resultado genérico igual, o queda en blanco | Un resultado negativo honesto, con su causa precisa, es un resultado de primera clase |
 | Base legal | Parafraseada o genérica | Cita el texto real del estatuto capturado detrás de cada afirmación |
 | Presentar la acción | A veces implícito o automatizado | Nunca — NEXO prepara materiales, vos los enviás |
+
+<p align="center">
+  <img src="visual/screenshot-how-it-works.png" alt="Tres pasos: Juntar, Entender, Preparar — más las tarjetas de honestidad por diseño y los dos casos de ejemplo" width="720" />
+</p>
 
 ## Por qué importa que quede constancia
 
@@ -107,6 +119,10 @@ nexo/
 └── scripts/                              # scripts de test y de schema
 ```
 
+<p align="center">
+  <img src="visual/screenshot-workspace.png" alt="El espacio privado de preparación legal: preservar lo que pasó, entender qué derechos pueden estar involucrados, preparar un registro claro" width="720" />
+</p>
+
 ## Esto no es una maqueta
 
 Argentina tiene dos bundles de política reales y ya conectados — Ley
@@ -136,6 +152,14 @@ manifiesto SHA-256 que genera. La interfaz completa está viva en
 [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app); crear un
 caso real necesita un backend corriendo detrás — mirá el
 [readme técnico](docs/TECHNICAL_README.md) para saber qué hace falta.
+
+<p align="center">
+  <img src="visual/screenshot-case-panel.png" alt="El espacio real: iniciar un caso, agregar evidencia, confirmar una declaración, evaluar y preparar una exportación" width="720" />
+</p>
+
+<p align="center">
+  <img src="visual/screenshot-verification.png" alt="Por qué importan el .eml, el PDF y el SHA-256, y de dónde sale exactamente el token del espacio" width="720" />
+</p>
 
 ---
 

@@ -139,6 +139,13 @@ today, getting access to a real workspace means someone with server
 access hands you a token by hand — there's no self-serve onboarding yet.
 That's exactly why the DEMO below needs nothing from anyone.
 
+## Watch it
+
+[Demo video (2:57)](https://www.youtube.com/watch?v=9FJ-8g5eZz4)
+
+**Please select 1080p quality when watching the video for the best
+viewing experience.**
+
 ## Try it — no account, no risk
 
 The demo is at [nexo-web-sigma.vercel.app/demo](https://nexo-web-sigma.vercel.app/demo).

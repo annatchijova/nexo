@@ -144,6 +144,13 @@ y no solo allá: hoy, para acceder a un espacio real, alguien con acceso al
 servidor te tiene que entregar un token a mano — todavía no hay una forma
 de sumarte sola. Por eso la DEMO de abajo no te pide nada de eso.
 
+## Mirá el video
+
+[Video demo (2:57)](https://www.youtube.com/watch?v=9FJ-8g5eZz4)
+
+**Please select 1080p quality when watching the video for the best
+viewing experience.**
+
 ## Probalo — sin cuenta, sin riesgo
 
 La demo está en [nexo-web-sigma.vercel.app/demo](https://nexo-web-sigma.vercel.app/demo).

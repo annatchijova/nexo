@@ -6,6 +6,8 @@
 
 **[English](README.md) · [Español](README_ES.md) · [Technical README](docs/TECHNICAL_README.md) · [Install](INSTALL.md)**
 
+**Built for LexHack 2026 — Access to Justice & Civic Tech, and Digital Rights & Policy Tech.**
+
 **Turn what happened to you into something you can actually show someone.**
 
 <p align="center">

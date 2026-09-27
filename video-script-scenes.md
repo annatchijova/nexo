@@ -1,6 +1,7 @@
 # NEXO — guion del video por escenas (todo grabado en vivo)
 
-Duración objetivo: ~3:00. 4 tramos, todos grabados en vivo desde la PC
+Duración objetivo: ~3:15–3:20 (el cierre se alargó a propósito, mejor un
+cierre fuerte que cumplir el segundero justo). 4 tramos, todos grabados en vivo desde la PC
 (pantalla, sin mic) + audio grabado aparte en el iPhone. Las 6 capturas
 que sacaste ya NO se usan para armar el video — quedaron insertadas
 directamente en `README.md` y `README_ES.md`.
@@ -104,18 +105,31 @@ wired in, not simulated."
 ffmpeg -f x11grab -framerate 30 -video_size 1920x1080 -i :0.0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -crf 18 ~/nexo-video/video/scene4-github.mp4
 ```
 
----
+**Cierre, dentro del mismo tramo (2:50–3:20 aprox. — se estira un poco el
+total, y está bien, mejor un cierre fuerte que cumplir el segundero
+justo):**
 
-### Cierre (2:50–3:00)
-Podés decirlo hablando a cámara en el último segundo del Tramo 4, sin
-necesidad de un tramo aparte:
+**ES:** "Cuando a alguien le llega acoso, no sabe qué hacer. Tiene
+capturas de pantalla, mensajes, todo desordenado. Se desespera, y a veces
+se desmotiva, porque no sabe qué llevarle a un abogado. NEXO existe
+exactamente para eso: para juntar ese caos y convertirlo en algo que se
+pueda mostrar.
 
-**ES:** "NEXO no reemplaza a un abogado. Hace posible el primer paso:
-preservar, entender y prepararte, aunque no sepas nada de tecnología."
+Este es un proyecto serio, no un prototipo. Lo pasé por varias rondas de
+red-team, y pienso seguir haciéndolo crecer. No reemplaza a un abogado:
+ayuda a alguien en una situación desesperada a juntar y preservar
+evidencia digital, sellada con hashes SHA-256."
 
-**EN:** "NEXO doesn't replace a lawyer. It makes the first step possible:
-preserving, understanding, and preparing — even if you know nothing about
-technology."
+**EN:** "When someone is being harassed, they don't know what to do.
+Screenshots, messages, everything scattered. They panic, and sometimes
+they give up, because they don't know what to bring to a lawyer. That's
+exactly what NEXO exists for: to take that chaos and turn it into
+something you can actually show.
+
+This is a serious project, not a prototype. I've put it through multiple
+rounds of red-team testing, and I intend to keep expanding it. It does
+not replace a lawyer. It helps someone in a desperate situation collect
+and preserve digital evidence, sealed with SHA-256 hashes."
 
 ---
 

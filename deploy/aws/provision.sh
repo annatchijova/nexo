@@ -132,4 +132,4 @@ echo "== done =="
 sleep 2
 systemctl --no-pager status nexo-api || true
 echo "verify with: curl -s http://127.0.0.1:8080/healthz"
-echo "next: install deploy/aws/Caddyfile with your real domain for TLS (see deploy/aws/README.md)"
+echo "next: install deploy/aws/Caddyfile with your real domain for TLS (see INSTALL.md / INSTALL.es.md)"

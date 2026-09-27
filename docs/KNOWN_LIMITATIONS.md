@@ -58,7 +58,7 @@ provisioned this session with [`../deploy/aws/provision.sh`](../deploy/aws/provi
 and is RUNTIME-CONFIRMED serving traffic: `nexo-api` behind Caddy, TLS via
 a real Let's Encrypt certificate for an `sslip.io` hostname (no custom
 domain owned yet — see "3. TLS" in
-[`../deploy/aws/README.md`](../deploy/aws/README.md) for why that still
+[`../INSTALL.es.md`](../INSTALL.es.md) for why that still
 gets a real, browser-trusted certificate). Verified over real public HTTPS,
 through Caddy, not just against `127.0.0.1`: `/healthz`, both seeded
 bundles, evidence intake, an evaluation, and a preparation, with CORS
@@ -101,7 +101,7 @@ Today the only way for a person to get a bearer token for a real NEXO
 workspace is for the workspace administrator to SSH into the EC2 instance
 and read `NEXO_BOOTSTRAP_OWNER` out of `/etc/nexo/nexo-api.env` (CODE
 FACT, see "1. Provisionar el host" in
-[`../deploy/aws/README.md`](../deploy/aws/README.md)), then hand it over
+[`../INSTALL.es.md`](../INSTALL.es.md)), then hand it over
 through a private channel. There is no invite flow, no self-registration,
 and no in-app way to issue a second credential — provisioning a workspace
 and provisioning a person's access to it are the same manual,

@@ -4,7 +4,7 @@
 
 # NEXO
 
-**[English](README.md) · [Español](README_ES.md) · [Technical README](docs/TECHNICAL_README.md)**
+**[English](README.md) · [Español](README_ES.md) · [Technical README](docs/TECHNICAL_README.md) · [Install](INSTALL.md)**
 
 **Turn what happened to you into something you can actually show someone.**
 

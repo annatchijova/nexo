@@ -1,5 +1,7 @@
 # NEXO en AWS
 
+**[English](INSTALL.md) · [Español](INSTALL.es.md)**
+
 Prepara una instancia EC2 para una instalación personal de NEXO. La
 instancia ejecuta el API como servicio del host porque el extractor
 sandbox necesita invocar Docker con límites explícitos. PostgreSQL y los
@@ -24,7 +26,40 @@ mínimo), y un security group que permita:
 
 ## 1. Provisionar el host
 
-Con la instancia corriendo y acceso SSH:
+### 1.0 Conectarte al servidor (dos formas)
+
+**Sin archivo `.pem` — recomendado si no lo tenés a mano o no sabés qué
+es:** AWS permite conectarte por navegador, sin ninguna clave instalada
+en tu computadora.
+
+1. Entrá a [console.aws.amazon.com](https://console.aws.amazon.com) con
+   la cuenta que creó la instancia.
+2. EC2 → Instances (revisá que estés en la región correcta — este
+   proyecto usa `us-east-2`).
+3. Click en la instancia de NEXO → botón **"Connect"** (arriba a la
+   derecha).
+4. Pestaña **"EC2 Instance Connect"** → botón **Connect**.
+5. Se abre una terminal en el navegador, ya conectada al servidor. Listo,
+   ya podés seguir con los comandos de abajo.
+
+Si esa pestaña no aparece o falla (depende de la configuración de red del
+security group), usá la forma tradicional:
+
+**Con archivo `.pem`** — la clave privada que se descargó una sola vez,
+al crear la instancia EC2:
+
+```sh
+ssh -i <ruta-a-tu-clave.pem> ubuntu@<IP-o-dominio-de-la-instancia>
+```
+
+Si `ubuntu@` da error de usuario, probá `ec2-user@`. Si perdiste el
+archivo `.pem`, no se puede volver a descargar — para ese caso está el
+método sin `.pem` de arriba.
+
+### 1.1 Correr el provisioning
+
+Con la instancia corriendo y ya conectado (por cualquiera de las dos
+formas de arriba):
 
 ```sh
 git clone https://github.com/annatchijova/nexo.git
@@ -58,7 +93,7 @@ entregar acceso — no hay invitación ni alta propia dentro de la app.
 Provisionar el servidor y darle acceso a una persona son, por ahora, el
 mismo paso manual por SSH. Es una fricción real para quien no es
 administrador de sistemas, y está anotada como próximo paso en
-[`../../docs/KNOWN_LIMITATIONS.md`](../../docs/KNOWN_LIMITATIONS.md), no
+[`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md), no
 escondida.
 
 ## 2. Variables en `/etc/nexo/nexo-api.env` (permisos `0600`)
@@ -145,7 +180,7 @@ secuencia completa, incluyendo el tramo por HTTPS público a través de
 Caddy (no solo contra `127.0.0.1`), fue corrida contra una instancia EC2
 real (Amazon Linux 2023, `t3.small`) provisionada con este mismo
 `provision.sh` — ver el "Status" del
-[readme técnico](../../docs/TECHNICAL_README.md) para el detalle exacto de
+[readme técnico](docs/TECHNICAL_README.md) para el detalle exacto de
 qué se verificó, cuándo, y los tres bugs de deploy reales que esa corrida
 encontró y que `provision.sh` ya tiene arreglados (target musl faltante,
 swap insuficiente en `t3.small`, autenticación `ident` de Postgres).

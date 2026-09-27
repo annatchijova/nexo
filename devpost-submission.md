@@ -6,6 +6,15 @@ Este es un borrador en español para la presentación de NEXO en LexHack 2026.
 Todavía no se envió nada a Devpost. La fecha oficial de cierre de submissions
 es el 27 de septiembre de 2026 a las 21:00 ET.
 
+## Track
+
+Access to Justice & Civic Tech.
+
+(Encaja también en Digital Rights & Policy Tech, pero se presenta bajo
+Access to Justice & Civic Tech porque el eje central es que una persona
+sin conocimiento legal ni técnico pueda ordenar su caso y llegar mejor
+preparada a una consulta real.)
+
 ## Título
 
 NEXO — Evidencia verificable para derechos digitales
@@ -345,14 +354,21 @@ Completar el video, capturas, README, tech stack, créditos de IA y limitaciones
 
 ## TODO oficial antes de enviar
 
-- [ ] Confirmar nombre y resumen final.
-- [ ] Grabar y subir el video de máximo 3 minutos.
-- [ ] Tomar 3–7 capturas de la aplicación funcionando.
-- [ ] Verificar el flujo real del backend con una API pública operativa.
-- [ ] Confirmar que todos los integrantes estén listados en Devpost.
-- [ ] Declarar Codex, Claude, librerías, APIs y herramientas utilizadas.
-- [ ] Revisar que no haya tokens, claves, `.env` ni credenciales en el repo.
-- [ ] Completar el enlace del video.
-- [ ] Revisar la elegibilidad: el evento está dirigido a estudiantes y permite
-  equipos de hasta cuatro personas.
-- [ ] Enviar el proyecto desde Devpost antes del cierre oficial.
+- [x] Confirmar nombre y resumen final.
+- [ ] Grabar y subir el video de máximo 3 minutos (guion ya está más abajo;
+  grabar con voz real, no sintetizada — subtítulos quemados si hace falta
+  claridad).
+- [ ] Tomar 3–7 capturas de la aplicación funcionando (lista de capturas más
+  abajo).
+- [x] Verificar que no haya tokens, claves, `.env` ni credenciales reales en
+  el repo (revisado: solo instrucciones de dónde obtener el token, ningún
+  valor real commiteado).
+- [x] Cuenta, equipo y elegibilidad de Devpost ya confirmados.
+- [x] Declarar Codex y Claude como herramientas de asistencia (sección
+  dedicada más abajo).
+- [ ] Completar el enlace del video en este documento y en el form de
+  Devpost.
+- [ ] Pegar el texto de este documento en los campos correspondientes del
+  form de Devpost (no queda enviado hasta hacer submit ahí).
+- [ ] Enviar el proyecto desde Devpost antes del cierre oficial (27 de
+  septiembre de 2026, 21:00 ET).

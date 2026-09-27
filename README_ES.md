@@ -6,29 +6,41 @@
 
 **[English](README.md) · [Español](README_ES.md) · [Technical README](docs/TECHNICAL_README.md)**
 
-**Convertí lo que te pasó en algo que de verdad podés mostrarle a alguien.**
+**Convertí lo que te pasó en algo que de verdad le podés mostrar a alguien.**
 
-Si a alguien le está pasando una situación de violencia digital, una
-violación de privacidad, u otra situación que afecta sus derechos, lo
-difícil casi nunca es "qué pasó" — es convertir capturas de pantalla
-sueltas, chats y recuerdos en algo que una persona, una plataforma o una
-autoridad tome en serio.
+## La noche en la que esto empezó a importar
 
-## Qué es NEXO
+Imaginate el momento justo después de que pasa. Alguien publicó algo tuyo
+sin permiso. O una empresa que tenía que cuidar tus datos, no lo hizo. No
+estás pensando en artículos de ley ni en funciones hash — estás
+scrolleando un chat tratando de sacar captura de todo antes de que
+desaparezca, preguntándote si algo de esto "cuenta", con miedo a la primera
+frase que vas a tener que decir en voz alta frente a un abogado, una
+amiga o un policía.
 
-Le das a NEXO lo que tenés — mensajes, documentos, tu propio relato de los
-hechos — y NEXO mantiene cada pieza etiquetada con honestidad: lo que
-*tenés* (evidencia), lo que *dijiste* (tu declaración), y lo que NEXO
-*concluye* (una inferencia acotada). Nunca mezcla esas categorías, y nunca
-inventa un derecho que no tenés. Si la respuesta es "todavía no hay
-suficiente para esto", NEXO dice exactamente eso, en vez de simular una
-respuesta.
+Ese momento — con miedo, sola con el teléfono lleno de pruebas sueltas —
+es exactamente para el que se construyó NEXO. No la versión prolija de
+caso de estudio. La real, a las dos de la mañana, cuando no sabés bien qué
+tenés ni si alcanza.
 
-Cuando sí hay un camino respaldado, NEXO te muestra por qué, citando la ley
-real detrás — y puede preparar los materiales (un pedido, un paquete de
-evidencia, una exportación) para que vos los envíes. **NEXO prepara. Nunca
-presenta ni envía nada por su cuenta** — esa línea importa, y está
-construida en el software, no solo prometida por escrito.
+## Qué hace NEXO, en concreto, por vos
+
+Le das a NEXO lo que tenés — un mensaje, un correo, un PDF, tu propio
+relato de lo que pasó — y NEXO nunca lo mezcla. Siempre mantiene tres
+cosas separadas y etiquetadas con claridad:
+
+- lo que **tenés** (la evidencia, tal cual existe),
+- lo que **dijiste** (tu relato, respetado como tu relato),
+- lo que NEXO **concluye** (una inferencia acotada y honesta — nunca un
+  veredicto).
+
+Si todavía no alcanza, NEXO no lo disimula. Te dice con precisión qué
+falta, para que tu próximo paso sea claro y no paralizante. Y cuando sí
+hay un camino respaldado, te muestra la ley real detrás — y puede preparar
+los papeles (un pedido, un paquete de evidencia, una exportación) para que
+vos los envíes. **NEXO prepara. Nunca presenta ni envía nada por su
+cuenta.** Eso no es una promesa perdida en una política de privacidad: es
+así como está construido el software.
 
 ```mermaid
 flowchart LR
@@ -38,49 +50,39 @@ flowchart LR
     question -->|"no"| honest["Una explicación honesta<br/>de por qué no"]
 ```
 
-## Qué no es
+## Lo que NEXO se niega a ser
 
-NEXO no es un abogado, no es asesoramiento legal, y no es un chatbot que
-contesta preguntas desde una noción general del derecho. Está acotado, una
-jurisdicción a la vez, a estatutos reales que puede citar — hoy, Argentina;
-Estados Unidos está planeado como un segundo bundle independiente.
+Se niega a ser otra herramienta que suena segura de sí misma sin serlo. No
+es un abogado, no es asesoramiento legal, y no es un chatbot que improvisa
+desde una noción general de "la ley". Solo habla desde estatutos reales
+que puede citar, una jurisdicción a la vez — hoy, Argentina; Estados
+Unidos está planeado como un segundo bundle construido de forma
+independiente, no como un atajo.
 
 |  | Una herramienta típica de "conocé tus derechos" | NEXO |
 |---|---|---|
-| Evidencia vs. tu relato vs. su propia conclusión | Generalmente mezclado en una sola narrativa | Se mantienen como tres tipos de afirmación distintos, etiquetados por separado |
+| Evidencia vs. tu relato vs. su propia conclusión | Generalmente mezclado en un relato que suena convincente | Se mantienen como tres tipos de afirmación distintos, etiquetados por separado |
 | Cuando nada aplica | Muestra un resultado genérico igual, o queda en blanco | Un resultado negativo honesto, con su causa precisa, es un resultado de primera clase |
 | Base legal | Parafraseada o genérica | Cita el texto real del estatuto capturado detrás de cada afirmación |
 | Presentar la acción | A veces implícito o automatizado | Nunca — NEXO prepara materiales, vos los enviás |
 
-## Cómo funciona, en términos generales
+## Por qué importa que quede constancia
 
-Un caso es un grafo: artefactos que aportás, observaciones directas
-extraídas de ellos, tus propias declaraciones, y los hechos e inferencias
-derivados de eso — cada uno se mantiene distinto. Ese grafo se evalúa contra
-el bundle de política de una jurisdicción (un conjunto de reglas legales
-versionado y citado a su fuente), que decide si hay una acción disponible,
-y por qué. Todo lo que importa — artefactos, exportaciones, el bundle de
-política vigente — se puede hashear y verificar de forma independiente, así
-un resultado no tiene que tomarse por fe.
+No deberías tener que confiar a ciegas en un software con algo tan
+personal. Así que no hace falta. Cada evidencia que agregás, cada caso que
+exportás, y el bundle legal exacto usado para evaluarlo, recibe una
+**huella SHA-256** — una firma única de esos bytes exactos. Si cambia un
+solo byte, la huella cambia con él.
 
-### No tenés que confiar en la palabra de NEXO
+Eso es lo que le permite a un abogado, una plataforma o un juzgado
+verificar tu exportación por su cuenta, en vez de confiar en la palabra de
+NEXO — con una herramienta chica e independiente que no necesita el
+servidor de NEXO corriendo. Lo que exportaste sigue siendo verificable
+incluso si NEXO, el proyecto, deja de existir mañana. Es la misma idea que
+un precinto a prueba de manipulación: no es la promesa de que nada puede
+salir mal, es la garantía de que si algo saliera mal, se notaría.
 
-Cada pieza de evidencia que agregás, cada caso que exportás, y el bundle
-legal exacto usado para evaluarlo, recibe una **huella SHA-256** — una firma
-digital única de esos bytes exactos. Si cambia un solo byte, la huella
-cambia con él. Eso es lo que permite:
-
-- Probar que un documento que exportaste de NEXO no fue alterado desde que
-  lo tenés.
-- Que un abogado, una plataforma o un juzgado pueda verificar esa huella
-  por su cuenta, en vez de confiar en la palabra de NEXO.
-- Verificar todo esto con una herramienta chica e independiente, que no
-  necesita el servidor ni la base de datos de NEXO corriendo — así lo que
-  exportaste se puede seguir verificando aunque NEXO deje de existir.
-
-Es la misma idea que un precinto a prueba de manipulación: no es la promesa
-de que nada puede salir mal, sino la garantía de que si algo saliera mal,
-se notaría.
+## Cómo está armado por dentro
 
 ```text
 nexo/
@@ -105,26 +107,34 @@ nexo/
 └── scripts/                              # scripts de test y de schema
 ```
 
-## Evidencia de que esto funciona hoy
+## Esto no es una maqueta
 
-Argentina tiene dos bundles de política reales y wireados — Ley 25.326
-(acceso, rectificación y supresión de datos personales) y Ley 27.736
-(violencia digital) — ambos construidos a partir del texto legal realmente
-capturado, no una paráfrasis. El backend cubre el camino completo
-(evidencia, evaluación, informe, preparación, exportación), y eso se
-verificó corriendo de verdad la suite de tests, incluso contra una base de
-datos PostgreSQL real, no solo leyendo el código.
+Argentina tiene dos bundles de política reales y ya conectados — Ley
+25.326 (acceso, rectificación y supresión de datos personales) y Ley
+27.736 (violencia digital) — ambos construidos a partir del texto legal
+realmente capturado, no una paráfrasis escrita de memoria. El backend
+cubre el camino completo: evidencia, evaluación, informe, preparación,
+exportación — y eso se confirmó corriendo de verdad la suite de tests
+contra una base de datos PostgreSQL real, no solo leyendo el código y
+esperando que funcione.
 
 Toda la evidencia de los tests, la arquitectura, y la lista honesta de qué
-falta todavía están en el [readme técnico](docs/TECHNICAL_README.md) — este
-proyecto declara sus limitaciones en un documento dedicado en vez de
-esconderlas en letra chica.
+falta todavía, están en el [readme técnico](docs/TECHNICAL_README.md) — un
+proyecto que habla de los derechos de las personas no tiene derecho a
+esconder sus propias limitaciones en letra chica. Una que vale nombrar acá
+y no solo allá: hoy, para acceder a un espacio real, alguien con acceso al
+servidor te tiene que entregar un token a mano — todavía no hay una forma
+de sumarte sola. Por eso la DEMO de abajo no te pide nada de eso.
 
-## Probalo
+## Probalo — sin cuenta, sin riesgo
 
-La demo está en [nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app).
-La interfaz está viva, pero necesita un backend corriendo (API + base de
-datos) detrás para poder crear un caso de verdad — mirá el
+La demo está en [nexo-web-sigma.vercel.app/demo](https://nexo-web-sigma.vercel.app/demo).
+Sin token, sin registrarte, sin que nada real se envíe a ningún lado.
+Recorré un caso de datos personales o uno de violencia digital tal como lo
+haría una persona real, de punta a punta, y mirá el `.eml`, el PDF y el
+manifiesto SHA-256 que genera. La interfaz completa está viva en
+[nexo-web-sigma.vercel.app](https://nexo-web-sigma.vercel.app); crear un
+caso real necesita un backend corriendo detrás — mirá el
 [readme técnico](docs/TECHNICAL_README.md) para saber qué hace falta.
 
 ---

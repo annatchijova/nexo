@@ -95,6 +95,28 @@ beyond a basic AWS Budgets cost alarm; the instance was provisioned for
 this session's validation and its continued uptime past that is an
 operational decision, not a repository guarantee.
 
+## There is no self-serve onboarding — getting a real token requires SSH
+
+Today the only way for a person to get a bearer token for a real NEXO
+workspace is for the workspace administrator to SSH into the EC2 instance
+and read `NEXO_BOOTSTRAP_OWNER` out of `/etc/nexo/nexo-api.env` (CODE
+FACT, see "1. Provisionar el host" in
+[`../deploy/aws/README.md`](../deploy/aws/README.md)), then hand it over
+through a private channel. There is no invite flow, no self-registration,
+and no in-app way to issue a second credential — provisioning a workspace
+and provisioning a person's access to it are the same manual,
+command-line step.
+
+This is intentional as a security default (no public account system means
+no public attack surface for account takeover), but it is real friction
+for the actual person NEXO is for: someone who is not a systems
+administrator and should never need to be one to get help. The DEMO
+(no token, fully client-side) exists precisely to route around this gap
+for a first look, but it does not close it for real use. Closing it means
+building an authenticated invite/second-credential flow inside
+`nexo-api` and `nexo-app` — a real feature, not a documentation fix — and
+it has not been designed or started yet.
+
 ## The United States bundle has not started
 
 Argentina (Ley 25.326, Ley 27.736) is the only jurisdiction with a real,

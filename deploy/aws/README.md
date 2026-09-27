@@ -53,6 +53,14 @@ pública, capturas o chats abiertos. Si se pierde, la base de datos no puede
 reconstruirla porque solo conserva su hash; hay que emitir una credencial
 nueva mediante un flujo autenticado o controlado.
 
+**Limitación conocida, no un olvido:** este es hoy el único mecanismo para
+entregar acceso — no hay invitación ni alta propia dentro de la app.
+Provisionar el servidor y darle acceso a una persona son, por ahora, el
+mismo paso manual por SSH. Es una fricción real para quien no es
+administrador de sistemas, y está anotada como próximo paso en
+[`../../docs/KNOWN_LIMITATIONS.md`](../../docs/KNOWN_LIMITATIONS.md), no
+escondida.
+
 ## 2. Variables en `/etc/nexo/nexo-api.env` (permisos `0600`)
 
 `provision.sh` ya las escribe; esta es la referencia de qué hace cada una:
